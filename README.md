@@ -33,6 +33,10 @@ curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.gith
   https://api.github.com/repos/LLM-Lineage/lookback-dist/contents/install.sh | sh
 ```
 
+Keep `GH_TOKEN` exported for the run: the same token is what lets the installer
+download the release assets, which a private repository will not serve without
+one.
+
 The installer puts the binary in `~/.lookback/bin`, links it into
 `~/.local/bin`, adds this repository as a Claude Code marketplace, installs the
 plugin, and reads your existing transcripts so the first question you ask is

@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Lookback and its companions, distributed to partners.",
-    "version": "0.0.0"
+    "version": "0.3.1"
   },
   "plugins": [
     {
