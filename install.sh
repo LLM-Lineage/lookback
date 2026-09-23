@@ -15,8 +15,12 @@ set -eu
 
 REPO="LLM-Lineage/lookback-dist"
 MARKET="LLM-Lineage/lookback-dist"
-MARKETPLACE_NAME="lineage-llm"
-PLUGIN="lookback@lineage-llm"
+# `lineage-llm` is already bavarde's marketplace. Claude Code keys marketplaces
+# by name, so reusing it meant `marketplace add` failed on the collision, the
+# fallback silently updated *bavarde's* marketplace instead, and the install
+# reported success having installed nothing.
+MARKETPLACE_NAME="lookback"
+PLUGIN="lookback@lookback"
 STATE="${HOME}/.lookback"
 BIN_DIR="${STATE}/bin"
 BIN="${BIN_DIR}/lookback"
@@ -187,7 +191,10 @@ if command -v claude >/dev/null 2>&1; then
   say "installing the plugin"
   claude plugin marketplace add "${MARKET}" 2>/dev/null \
     || claude plugin marketplace update "${MARKETPLACE_NAME}" 2>/dev/null || true
-  if claude plugin list 2>/dev/null | grep -q "${PLUGIN}"; then
+  # Anchored: a substring match also matched `lookback@lineage-llm-src`, the
+  # local development install, so this took the update path for a plugin that
+  # was not there.
+  if claude plugin list 2>/dev/null | grep -qE "(^|[^-[:alnum:]])${PLUGIN}([^-[:alnum:]]|$)"; then
     claude plugin update "${PLUGIN}" 2>/dev/null || true
   else
     claude plugin install "${PLUGIN}" 2>/dev/null \
