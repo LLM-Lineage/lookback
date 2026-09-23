@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "lineage-llm",
+  "owner": {
+    "name": "Lineage LLM",
+    "url": "https://github.com/LLM-Lineage"
+  },
+  "metadata": {
+    "description": "Lookback and its companions, distributed to partners.",
+    "version": "0.0.0"
+  },
+  "plugins": [
+    {
+      "name": "lookback",
+      "source": "./plugin",
+      "description": "Reads what Claude Code already wrote to disk and tells you how to configure it better: the permission rules you are missing, the instructions you keep retyping, the skills nobody invokes, and what a repository should tell the next person who opens it. Local-only."
+    }
+  ]
+}
