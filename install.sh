@@ -72,6 +72,14 @@ fi
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required to read the release manifest"
 
+# The version Claude Code currently has, for telling an update from a no-op.
+# `claude plugin update` says "Checking for updates…" either way, which is how
+# somebody ends up with a new binary, old commands, and nothing saying so.
+installed_version() {
+  claude plugin list 2>/dev/null \
+    | awk -v p="${PLUGIN}" '$0 ~ p {found=1; next} found && /Version:/ {print $2; exit}'
+}
+
 # GH_TOKEN is honoured while the distribution repository is private; unset once
 # it is public. Assets are fetched through the API asset endpoint rather than
 # the browser URL, because a private repository answers 404 to a browser-URL
@@ -187,6 +195,7 @@ esac
 # Re-running this script is the update path, so refresh the marketplace and
 # update an already-installed plugin: `install` alone is idempotent and would
 # leave an old version in place.
+plugin_changed=no
 if command -v claude >/dev/null 2>&1; then
   say "installing the plugin"
   claude plugin marketplace add "${MARKET}" 2>/dev/null \
@@ -195,10 +204,15 @@ if command -v claude >/dev/null 2>&1; then
   # local development install, so this took the update path for a plugin that
   # was not there.
   if claude plugin list 2>/dev/null | grep -qE "(^|[^-[:alnum:]])${PLUGIN}([^-[:alnum:]]|$)"; then
+    before="$(installed_version)"
     claude plugin update "${PLUGIN}" 2>/dev/null || true
+    [ "$(installed_version)" = "${before}" ] || plugin_changed=yes
   else
-    claude plugin install "${PLUGIN}" 2>/dev/null \
-      || warn "run: claude plugin install ${PLUGIN}"
+    if claude plugin install "${PLUGIN}" 2>/dev/null; then
+      plugin_changed=yes
+    else
+      warn "run: claude plugin install ${PLUGIN}"
+    fi
   fi
 else
   warn "claude not found; then: claude plugin marketplace add ${MARKET} && claude plugin install ${PLUGIN}"
@@ -210,4 +224,14 @@ fi
 # is answered immediately rather than after a minute of silence.
 say "reading what Claude Code has already written"
 "${BIN}" collect || warn "run \`lookback collect\` yourself; nothing else is needed"
-say "done. Try \`lookback review\`, or /lookback:review inside Claude Code."
+
+# Claude Code registers a plugin's skills when a session starts. Updating the
+# plugin under a session that is already open leaves it with the previous
+# version's commands and nothing to say so — which reads as the new command
+# simply not existing.
+if [ "${plugin_changed}" = yes ]; then
+  say "done. The binary is ready now; \`lookback review\` works in this terminal."
+  warn "the plugin changed — restart Claude Code to pick up its commands"
+else
+  say "done. Try \`lookback review\`, or /lookback:review inside Claude Code."
+fi
