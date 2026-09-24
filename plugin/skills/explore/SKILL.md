@@ -35,5 +35,13 @@ Always show the observation next to the suggestion — "`aws` appears in 434
 commands" is what makes `deploy-on-aws` a recommendation rather than an
 advertisement. A suggestion with no observation behind it should not be offered.
 
-If the finding is absent, say there was no confident match. Padding the list
-with weak matches is how a recommendation engine teaches people to ignore it.
+If the finding is absent, say there was no confident match — and say *why*.
+Running `lookback explore` without `--json` prints the reasoning behind a zero:
+which commands this scope is made of, which were left out as too widespread to
+describe anything, and which the cached catalogue simply has no entry for. "Your
+signature here is `cargo`, and the catalogue has nothing for that ecosystem" is a
+real answer; silence is not.
+
+Padding the list with weak matches is the other failure, and the worse one. A
+term with no catalogue entry means there is nothing to suggest, not that
+something nearby will do.

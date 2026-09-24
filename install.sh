@@ -66,8 +66,9 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
   sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 else
-  sha256() { echo ""; }
-  warn "no sha256 tool found; downloads cannot be verified"
+  # No third branch. This script downloads an executable and runs it; without a
+  # way to check what arrived, the only safe thing it can do is stop.
+  die "no sha256 tool found (need sha256sum or shasum); cannot verify the download"
 fi
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required to read the release manifest"
@@ -126,13 +127,18 @@ for a in json.load(sys.stdin).get("assets", []):
 asset_url="$(asset_of "${archive}")"
 sums_url="$(asset_of checksums.json)"
 [ -n "${asset_url}" ] || die "no ${archive} in ${version}"
+# A release with no manifest cannot be verified, and an unverifiable release is
+# not one to install. Previously this skipped the whole check block silently —
+# no warning, no mismatch, straight to running the binary.
+[ -n "${sums_url}" ] || die "no checksums.json in ${version}; refusing to install unverified"
 
 # --- 3. download and verify both hashes --------------------------------------
 tmp="$(mktemp -d)"
 trap 'rm -r -f "${tmp}"' EXIT
 say "downloading"
 api_download "${asset_url}" "${tmp}/${archive}"
-[ -n "${sums_url}" ] && api_download "${sums_url}" "${tmp}/checksums.json"
+api_download "${sums_url}" "${tmp}/checksums.json" \
+  || die "could not download checksums.json; refusing to install unverified"
 
 hash_from() {
   python3 - "$1" "$2" "$3" <<'PY'
@@ -142,12 +148,24 @@ print(data.get("binaries", {}).get(sys.argv[2], {}).get(sys.argv[3], ""))
 PY
 }
 
-if [ -f "${tmp}/checksums.json" ]; then
-  want="$(hash_from "${tmp}/checksums.json" "${target}" archive_sha256)"
-  got="$(sha256 "${tmp}/${archive}")"
-  [ -z "${want}" ] || [ -z "${got}" ] || [ "${want}" = "${got}" ] || die "archive checksum mismatch"
-  say "archive verified"
-fi
+# Every way of not knowing is a failure, not a pass.
+#
+# This used to read `[ -z "$want" ] || [ -z "$got" ] || [ "$want" = "$got" ] ||
+# die`, where an empty hash on either side short-circuits the whole chain to
+# true — so a missing manifest entry, or a missing hash tool, skipped the
+# comparison and then printed "verified" on the next line regardless. The only
+# case that ever failed was the one where both hashes were present and differed.
+verify() {
+  _file="$1"; _field="$2"; _label="$3"
+  _want="$(hash_from "${tmp}/checksums.json" "${target}" "${_field}")"
+  [ -n "${_want}" ] || die "checksums.json has no ${_field} for ${target}; refusing to install"
+  _got="$(sha256 "${_file}")"
+  [ -n "${_got}" ] || die "could not hash ${_file}; refusing to install unverified"
+  [ "${_want}" = "${_got}" ] || die "${_label} checksum mismatch (expected ${_want}, got ${_got})"
+  say "${_label} verified"
+}
+
+verify "${tmp}/${archive}" archive_sha256 archive
 
 say "unpacking"
 tar -xzf "${tmp}/${archive}" -C "${tmp}"
@@ -156,12 +174,7 @@ extracted="$(find "${tmp}" -name lookback -type f | head -1)"
 
 # The authoritative check: it covers the file that actually executes, rather
 # than trusting the unpack step.
-if [ -f "${tmp}/checksums.json" ]; then
-  want="$(hash_from "${tmp}/checksums.json" "${target}" binary_sha256)"
-  got="$(sha256 "${extracted}")"
-  [ -z "${want}" ] || [ -z "${got}" ] || [ "${want}" = "${got}" ] || die "binary checksum mismatch"
-  say "binary verified"
-fi
+verify "${extracted}" binary_sha256 binary
 
 # --- 4. place the binary -----------------------------------------------------
 # Overwriting a signed binary in place invalidates its signature, and macOS then
