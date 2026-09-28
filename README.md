@@ -29,23 +29,8 @@ repository's scaffolding after asking.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback-dist/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
 ```
-
-### While this repository is private
-
-A raw URL returns 404 even with a token, so fetch the installer through the API
-instead. The simplest token is your own `gh` login:
-
-```sh
-export GH_TOKEN=$(gh auth token)
-curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/LLM-Lineage/lookback-dist/contents/install.sh | sh
-```
-
-Keep `GH_TOKEN` exported for the whole run — the same token is what lets the
-installer download the release assets, which a private repository will not serve
-without one.
 
 ### What the installer does
 
@@ -67,13 +52,7 @@ Requires `python3`, `curl`, and `sha256sum` or `shasum`.
 the plugin, and leaves your collected store alone.
 
 ```sh
-# public
-curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback-dist/main/install.sh | sh
-
-# while the repository is private
-export GH_TOKEN=$(gh auth token)
-curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.raw" \
-  https://api.github.com/repos/LLM-Lineage/lookback-dist/contents/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
 ```
 
 Check what you have with `lookback --version`, and what Claude Code has with
@@ -141,14 +120,14 @@ The installer above supplies the verified `lookback` executable. Install the
 same released plugin from OMP's marketplace — in OMP's REPL:
 
 ```
-/marketplace add LLM-Lineage/lookback-dist
+/marketplace add LLM-Lineage/lookback
 /marketplace install lookback@lookback
 ```
 
 or from a shell:
 
 ```sh
-omp plugin marketplace add LLM-Lineage/lookback-dist
+omp plugin marketplace add LLM-Lineage/lookback
 omp plugin install lookback@lookback
 ```
 
@@ -171,8 +150,8 @@ specific question, and you can keep challenging the evidence in the conversation
 that follows — the counts are there to be disagreed with. As everywhere else, it
 proposes and you apply.
 
-OMP's marketplace needs Git access to the distribution repository while it is
-private; the installer's `GH_TOKEN` does not configure OMP's Git credentials.
+OMP clones the marketplace over Git, which needs nothing special now that the
+distribution repository is public.
 
 OMP collection reads `~/.omp/agent/sessions/**/*.jsonl` (override the agent
 directory with `LOOKBACK_OMP_HOME`) into `~/.lookback/omp.sqlite`, separately
@@ -390,7 +369,7 @@ authoritative one: it covers the file that actually executes, checked after
 unpacking, rather than trusting the unpack step.
 
 ```sh
-gh release download v<version> --repo LLM-Lineage/lookback-dist --dir lookback
+gh release download v<version> --repo LLM-Lineage/lookback --dir lookback
 cd lookback && sha256sum -c SHA256SUMS
 ```
 
@@ -405,8 +384,9 @@ cd lookback && sha256sum -c SHA256SUMS
 **`/lookback:…` is an unknown command** — the plugin was installed or updated
 under a session that was already open. Restart Claude Code.
 
-**The installer says it cannot reach the releases** — the distribution repository
-is private; export `GH_TOKEN` as shown above.
+**The installer says it cannot reach the releases** — check the network, and
+that `curl` and `python3` are on your `PATH`. The repository is public, so no
+token or login is needed.
 
 **It refuses to install, saying it cannot verify** — that is deliberate. A
 release with no `checksums.json`, no entry for your platform, or a machine with

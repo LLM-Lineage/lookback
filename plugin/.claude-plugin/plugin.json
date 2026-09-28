@@ -1,9 +1,9 @@
 {
   "name": "lookback",
-  "version": "0.6.1",
-  "description": "Reads what Claude Code already wrote to disk and tells you how to configure it better",
+  "version": "0.6.2",
+  "description": "Reads what Claude Code and OMP already wrote to disk and tells you how to configure them better",
   "license": "MIT",
-  "homepage": "https://github.com/LLM-Lineage/mandate",
-  "repository": "https://github.com/LLM-Lineage/mandate",
+  "homepage": "https://github.com/LLM-Lineage/lookback",
+  "repository": "https://github.com/LLM-Lineage/lookback",
   "skills": "./skills/"
 }

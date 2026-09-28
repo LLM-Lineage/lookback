@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Lookback installer and updater. Idempotent: re-run it to update.
 #
-#   curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback-dist/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
 #
 # Everything is user-level. No sudo, nothing under /usr/local, nothing an IT
 # policy objects to. Re-running installs the newest release over the old one
@@ -13,8 +13,8 @@
 
 set -eu
 
-REPO="LLM-Lineage/lookback-dist"
-MARKET="LLM-Lineage/lookback-dist"
+REPO="LLM-Lineage/lookback"
+MARKET="LLM-Lineage/lookback"
 # `lineage-llm` is already bavarde's marketplace. Claude Code keys marketplaces
 # by name, so reusing it meant `marketplace add` failed on the collision, the
 # fallback silently updated *bavarde's* marketplace instead, and the install
@@ -81,10 +81,14 @@ installed_version() {
     | awk -v p="${PLUGIN}" '$0 ~ p {found=1; next} found && /Version:/ {print $2; exit}'
 }
 
-# GH_TOKEN is honoured while the distribution repository is private; unset once
-# it is public. Assets are fetched through the API asset endpoint rather than
-# the browser URL, because a private repository answers 404 to a browser-URL
-# fetch even with a bearer token.
+# The distribution repository is public, so no token is needed and none is asked
+# for. `GH_TOKEN` is still honoured if it happens to be set — for a private fork,
+# or a rate-limited network — but the documented path uses neither.
+#
+# Assets go through the API asset endpoint rather than the browser URL. That was
+# required while the repository was private, where a browser-URL fetch answers
+# 404 even with a bearer token; it is kept because it works either way and is one
+# code path instead of two.
 AUTH_H=""
 [ -n "${GH_TOKEN:-}" ] && AUTH_H="Authorization: Bearer ${GH_TOKEN}"
 
@@ -107,7 +111,7 @@ api_download() {
 # --- 2. resolve the latest release -------------------------------------------
 say "finding the latest release"
 release_json="$(api_get "https://api.github.com/repos/${REPO}/releases/latest")" \
-  || die "cannot reach ${REPO} releases — a private repository needs GH_TOKEN with read access"
+  || die "cannot reach ${REPO} releases — check the network; the repository is public and needs no token"
 
 version="$(printf '%s' "${release_json}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))')"
 [ -n "${version}" ] || die "no release found"
