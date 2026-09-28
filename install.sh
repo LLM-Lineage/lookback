@@ -73,6 +73,25 @@ fi
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required to read the release manifest"
 
+# Where Claude Code keeps its own state. It honours CLAUDE_CONFIG_DIR, so this
+# does too - otherwise a sandboxed run would read the real configuration.
+CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
+
+# What Claude Code has cached as this marketplace's source, empty when it has no
+# entry. Read from its own file rather than scraped out of `marketplace list`,
+# whose output is written for people and is free to change.
+marketplace_repo() {
+  python3 - "${CLAUDE_HOME}/plugins/known_marketplaces.json" "${MARKETPLACE_NAME}" <<'MKT'
+import json, sys
+try:
+    document = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+entry = document.get(sys.argv[2]) or {}
+print((entry.get("source") or {}).get("repo", ""))
+MKT
+}
+
 # The version Claude Code currently has, for telling an update from a no-op.
 # `claude plugin update` says "Checking for updates…" either way, which is how
 # somebody ends up with a new binary, old commands, and nothing saying so.
@@ -215,6 +234,24 @@ esac
 plugin_changed=no
 if command -v claude >/dev/null 2>&1; then
   say "installing the plugin"
+
+  # An install made before the distribution repository was renamed still has the
+  # old name cached. Nothing looks wrong: `marketplace add` fails on the name
+  # collision, the fallback `update` re-clones from whatever was stored, and the
+  # whole thing keeps working - but only because GitHub redirects the old name.
+  # That redirect is a dependency nobody chose, and it stops the moment anything
+  # else claims the old name, so re-point the marketplace at the real one.
+  #
+  # Removing a marketplace uninstalls the plugins that came from it, which is why
+  # this runs *before* the block below: that block then finds no plugin and puts
+  # it back. Nothing of the user's is lost either way - Lookback's state is the
+  # store under ~/.lookback, not plugin data.
+  stored_repo="$(marketplace_repo)"
+  if [ -n "${stored_repo}" ] && [ "${stored_repo}" != "${MARKET}" ]; then
+    warn "the marketplace points at ${stored_repo}; re-pointing it at ${MARKET}"
+    claude plugin marketplace remove "${MARKETPLACE_NAME}" >/dev/null 2>&1 || true
+  fi
+
   claude plugin marketplace add "${MARKET}" 2>/dev/null \
     || claude plugin marketplace update "${MARKETPLACE_NAME}" 2>/dev/null || true
   # Anchored: a substring match also matched `lookback@lineage-llm-src`, the
