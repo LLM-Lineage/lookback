@@ -1,6 +1,6 @@
 {
   "name": "lookback",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Reads what Claude Code already wrote to disk and tells you how to configure it better",
   "license": "MIT",
   "homepage": "https://github.com/LLM-Lineage/mandate",
