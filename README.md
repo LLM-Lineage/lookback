@@ -86,9 +86,12 @@ Using OMP as well? Update its copy of the plugin too, in OMP's REPL:
 
 ```
 /marketplace update lookback
+/marketplace install lookback@lookback
 ```
 
-Then `omp plugin doctor` should report the version you just installed. Restart
+The first refreshes the marketplace; the second reinstalls the plugin from it,
+qualified — see the warning under **Inside OMP** about the bare name. Then
+`omp plugin list` should show `lookback@lookback (<version>) (user)`. Restart
 OMP afterwards, for the same reason as Claude Code: extensions load at start.
 
 An out-of-date binary is detected rather than guessed at: the OMP tool will tell
@@ -100,7 +103,7 @@ description contradicts.
 ```sh
 install.sh --uninstall           # remove the binary and the plugin, keep the store
 install.sh --uninstall --purge   # remove the collected store as well
-omp plugin uninstall lookback-omp   # if you linked the OMP extension
+omp plugin uninstall lookback-omp   # the OMP plugin, if you installed it
 ```
 
 The store is your own collected history and is kept unless you ask for it to go;
@@ -135,12 +138,32 @@ not itself permission to change configuration.
 ### Inside OMP
 
 The installer above supplies the verified `lookback` executable. Install the
-same released plugin in OMP's own REPL:
+same released plugin from OMP's marketplace — in OMP's REPL:
 
 ```
 /marketplace add LLM-Lineage/lookback-dist
 /marketplace install lookback@lookback
 ```
+
+or from a shell:
+
+```sh
+omp plugin marketplace add LLM-Lineage/lookback-dist
+omp plugin install lookback@lookback
+```
+
+> **Always the qualified `lookback@lookback`, never a bare `lookback`.**
+> The name after the `@` is the marketplace. Without it, `omp plugin install
+> lookback` resolves the name against the public npm registry instead, where a
+> package called `lookback` already exists and belongs to someone else. It
+> installs without complaint, and OMP runs plugin code — so the mistake is
+> quiet and it executes. Anything you install from us is
+> `<plugin>@<marketplace>`.
+
+Uninstalling needs `bun` on your `PATH` (`brew install bun`); OMP uses it to
+manage the plugin directory. Without it an uninstall fails partway and leaves
+OMP's lock file claiming a plugin that is no longer there, which then blocks the
+next install with a conflict against itself.
 
 Restart OMP to load its extension, then enter `/lookback` to review this
 machine's Claude Code and OMP sessions. `/lookback <question>` starts from a
