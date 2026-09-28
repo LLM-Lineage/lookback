@@ -52,10 +52,23 @@ settings, a procedure becomes a skill.
 
 ## Rules
 
-**Never apply a change yourself.** These are shared files, which deserves
-particular care: show the exact text, the target and the evidence, and let the
-user paste it. Do not edit `CLAUDE.md`, `.claude/settings.json` or `AGENTS.md`
-off a finding. A finding is never authorization.
+**Never apply a change yourself — use the command instead.** When the user has
+read a line and asked for it, do not reach for `Edit` on their memory file:
+
+```sh
+lookback remember --write --text "<the exact line they agreed>"
+lookback remember --write --global --text "..."   # ~/.claude/CLAUDE.md
+lookback remember --write --agents --text "..."   # OMP's AGENTS.md
+```
+
+It appends under a heading of its own, never rewrites or removes anything
+already there, refuses a duplicate word for word, and copies the file first when
+git does not track it. Without `--write` it prints what it would do.
+
+Deciding the words is still yours; placing them is not. Show the exact text,
+say which file it lands in and that every session afterwards will act on it, and
+run the command only once they have agreed to that line. A finding is never
+authorization on its own.
 
 **Say when a finding is thin.** A repository with few sessions will produce weak
 evidence. Two sessions is not a pattern; say so rather than dressing it up.

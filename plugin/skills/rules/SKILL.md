@@ -22,6 +22,32 @@ project's own `.claude/settings.json` rather than the user's.
 
 Three findings land here, and they have different fixes.
 
+## The permission rules can be applied for them
+
+```sh
+lookback rules --write            # this repository's .claude/settings.json
+lookback rules --write --global   # the user's ~/.claude/settings.json
+```
+
+**Offer this instead of editing the file yourself.** It is the same merge
+`install` uses — everything already there is preserved, including key order —
+and it is deterministic and tested, where you pasting JSON is neither. It only
+ever adds to `permissions.allow`, never touches `deny` or `ask`, and copies the
+file first when git does not track it.
+
+Two things to tell them when it applies:
+
+- If the output says the additions **will not change anything yet**, a blanket
+  `Bash` is allowing everything already. `--narrow` removes it, and that is a
+  real decision: every command the new rules do not name starts prompting again.
+  Say that before suggesting it.
+- If the blanket is in a different file from the one being written — a user-level
+  `Bash` while a repository's settings are updated — nothing in that repository
+  can remove it. It has to be narrowed where it lives.
+
+This covers the permission rules only. Everything below that belongs in
+`CLAUDE.md` is still yours to propose and theirs to paste.
+
 ## `unruled-bash`
 
 Command prefixes that ran often with no `permissions.allow` rule covering them —
@@ -110,6 +136,20 @@ Show which observation produced each suggestion and offer the exact text, so a
 rule the user disagrees with is one they can reject rather than one that
 silently appears.
 
-**Never apply a change yourself.** Hand over the text; let the user paste it.
-Do not edit `settings.json`, `CLAUDE.md` or `AGENTS.md` off a finding. The one
-exception in all of Lookback is `lookback install`, and this is not it.
+**Never apply a change yourself — use the command instead.** When the user has
+read a line and asked for it, do not reach for `Edit` on their memory file:
+
+```sh
+lookback remember --write --text "<the exact line they agreed>"
+lookback remember --write --global --text "..."   # ~/.claude/CLAUDE.md
+lookback remember --write --agents --text "..."   # OMP's AGENTS.md
+```
+
+It appends under a heading of its own, never rewrites or removes anything
+already there, refuses a duplicate word for word, and copies the file first when
+git does not track it. Without `--write` it prints what it would do.
+
+Deciding the words is still yours; placing them is not. Show the exact text,
+say which file it lands in and that every session afterwards will act on it, and
+run the command only once they have agreed to that line. A finding is never
+authorization on its own.

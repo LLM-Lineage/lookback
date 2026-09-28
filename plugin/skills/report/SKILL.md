@@ -43,10 +43,11 @@ Each finding carries `improves` (`rules`, `skills`, `subagents` or `explore`),
 
 ## Rules for reporting this
 
-**Never apply a change yourself.** The report is evidence, not authorization.
-Answer follow-up questions against the counts and the source records, and hand
-over the text for the user to paste. Do not edit `settings.json`, `CLAUDE.md` or
-`AGENTS.md` off a finding.
+**Never edit their files yourself.** The report is evidence, not authorization.
+Answer follow-up questions against the counts and the source records. When the
+user asks for something specific to be applied, `lookback rules --write` places
+permission rules and `lookback remember --write --text "..."` places one agreed
+instruction — use those rather than `Edit`. A finding alone is never enough.
 
 **Quote the evidence.** Every finding carries counts for a reason: the user
 should be able to disagree with it. A recommendation they cannot check is one

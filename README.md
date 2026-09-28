@@ -270,6 +270,47 @@ readily as the `.github/` directory everybody would.
 `--org` is the one command that touches the network. It goes through your own
 `gh` CLI and sends nothing from the store.
 
+### Applying the permission rules
+
+```sh
+lookback rules                    # print them
+lookback rules --write            # apply them to this repository
+lookback rules --write --global   # apply them to ~/.claude/settings.json
+```
+
+The same careful merge `install` uses: everything already in the file is kept,
+including key order. It **only ever adds** to `permissions.allow` and never
+touches `deny` or `ask`. When git does not track the file, a copy is written
+beside it first and the path is printed.
+
+If a blanket `Bash` is already allowing everything, the additions change nothing
+until it goes — and removing it takes authority away, so it needs its own word:
+
+```sh
+lookback rules --write --narrow   # also remove the blanket the rules replace
+```
+
+Every command the new rules do not name will start asking again after that. It
+is the point of the change, and worth knowing before you make it.
+
+### Remembering an instruction
+
+```sh
+lookback remember --text "After a task, commit and push without being asked."
+lookback remember --write --text "..."            # actually add it
+lookback remember --write --global --text "..."   # to ~/.claude/CLAUDE.md
+lookback remember --write --agents --text "..."   # to OMP's AGENTS.md
+```
+
+Appends one line to the memory file every session reads, under a heading of its
+own. It **never composes or edits** — it places the text you give it — and it
+never rewrites or removes anything already there. A duplicate word for word is
+refused. Without `--write` it prints what it would do and stops.
+
+This exists so an instruction you have read and agreed to does not need an agent
+editing your `CLAUDE.md` by hand to get there. Deciding the words is still
+yours; placing them is not.
+
 ### Giving a repository Lookback of its own
 
 ```sh

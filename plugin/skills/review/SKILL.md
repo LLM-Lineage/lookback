@@ -129,11 +129,19 @@ empty. Do not default to it. Delete the directory afterwards.
 
 ## Rules
 
-**Never apply a change yourself.** Hand over the text; let the user paste it.
-Do not edit `settings.json`, `CLAUDE.md`, `AGENTS.md` or plugin configuration
-off a finding. The one exception in all of Lookback is `lookback install`, and
-this is not it. A finding is evidence, not an instruction: invite challenges and
-re-check a disputed claim against its source.
+**Never edit their files yourself.** A finding is evidence, not an instruction:
+invite challenges and re-check a disputed claim against its source. When the
+user has read something and asked for it, Lookback has commands that place it —
+use those rather than `Edit`:
+
+```sh
+lookback rules --write                            # the permission rules
+lookback remember --write --text "<agreed line>"  # one instruction, into CLAUDE.md
+```
+
+Both print what they would do, refuse duplicates, never remove what somebody
+else wrote, and copy the file first when git does not track it. Neither decides
+anything: the words are still yours to propose and theirs to agree to.
 
 **Quote the evidence.** Each finding carries counts so the user can disagree.
 A recommendation they cannot check is one they should not take.
