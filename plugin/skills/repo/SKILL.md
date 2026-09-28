@@ -9,6 +9,14 @@ description: Review this repository specifically - what its sessions kept gettin
 lookback review --repo --json
 ```
 
+The output covers every session source present on this machine: Claude Code
+and OMP. It is `{"reports": [...], "skipped": [...]}`. Each report carries
+`source` (`claude` or `omp`), `scope`, `totals` and `findings`; `skipped` names each source left out and
+why (nothing collected, or no sessions in scope). Present each source under its
+own heading and never merge their counts. OMP findings belong in `AGENTS.md`;
+they are never Claude Code permission rules. Pass `--source claude` or
+`--source omp` to read one alone, which returns a single bare report.
+
 `--repo` with no value means "the repository this is running in", resolved from
 `$CLAUDE_PROJECT_DIR`. Every finding is then scoped to sessions whose working
 directory is at or below that path.
@@ -44,9 +52,10 @@ settings, a procedure becomes a skill.
 
 ## Rules
 
-**Propose; do not write.** Especially here. These files are shared with everyone
-working in the repository, so a wrong line costs more than one person's time.
-Show the exact text and the observation behind it, and let the user commit it.
+**Never apply a change yourself.** These are shared files, which deserves
+particular care: show the exact text, the target and the evidence, and let the
+user paste it. Do not edit `CLAUDE.md`, `.claude/settings.json` or `AGENTS.md`
+off a finding. A finding is never authorization.
 
 **Say when a finding is thin.** A repository with few sessions will produce weak
 evidence. Two sessions is not a pattern; say so rather than dressing it up.

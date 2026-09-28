@@ -48,7 +48,8 @@ claims.
    and the workflow file is the more authoritative statement. Where they
    disagree, say so rather than picking one silently.
 
-5. **Hand over the text. Do not write the files.**
+5. **Hand over the draft first.** Apply only a specific edit the user explicitly
+   requests, after inspecting the target and showing the diff and scope.
 
 ## What makes a good CLAUDE.md here
 
@@ -80,10 +81,11 @@ about itself.
 
 ## Rules
 
-**Propose; never apply.** Do not create `CLAUDE.md`, `.claude/settings.json` or
-any skill file yourself, even if the user seems to want it — give them the text.
-The one exception is `lookback install`, which writes a single named change to
-the plugin keys and only with `--write`.
+**Never apply a change yourself.** Hand over the text; let the user paste it.
+Do not create or edit `CLAUDE.md`, `.claude/settings.json`, `AGENTS.md` or a
+skill off a finding, even when asked to — say what to paste and where. The one
+exception in all of Lookback is `lookback install --write`, the CLI's own
+separate plugin-install operation, and this is not it.
 
 **Say where each suggestion came from.** Every finding carries a `basis`:
 `measured` was drawn from this machine, `structural` follows from what Claude

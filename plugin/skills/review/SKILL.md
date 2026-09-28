@@ -1,25 +1,53 @@
 ---
 name: review
-description: Collect and report everything this machine's Claude Code history says about the user's setup, in one pass, ending with what to improve in priority order. Use when the user asks for a full review of their Claude Code configuration, wants everything at once rather than one area, or says /lookback:review.
+description: Find what is wrong with this Claude Code setup, report it with the evidence, and propose the fixes - the counted findings, where the tokens went, and the moments in the transcripts where something actually went wrong. Use when the user asks for a review, asks what to improve, wants to know where their tokens go, wants to know why sessions here keep struggling, or says /lookback:review.
 ---
 
-# The whole picture, in one pass
+# Find the issues, report them, propose the fixes
 
 ```sh
 lookback review --json
 ```
 
-One command: it collects first (incremental, so fast after the first run), then
-reports every finding, ordered by how much of the user's activity each covers.
+One command. It collects first (incremental, so fast after the first run), then
+reports every finding ordered by how much of the user's activity each covers,
+with the totals alongside.
 
-## Presenting it
+**It covers every session source on this machine — Claude Code and OMP — and
+reports on each separately.** The payload is `{"reports": [...], "skipped": [...]}`:
+each report carries `source` (`claude` or `omp`), `scope`, `totals` and
+`findings`, and `skipped` names every source left out and why (nothing
+collected, or no sessions in scope). Present each source under its own heading
+and **never merge their counts** — they are different tools with different
+histories. `--source claude` or `--source omp` reads one alone and returns a
+single bare report.
 
-Lead with the finding at the top — the list is already ordered by weight. For
-each, give the **change** first and the evidence second. Close with the
-`What to improve` grouping: the areas, heaviest first. That last part is what a
-reader takes away if they stop halfway.
+**An OMP finding belongs in `~/.omp/agent/AGENTS.md`, never in a Claude Code
+permission rule.** OMP has no `permissions.allow`, so a rule-shaped suggestion
+there is advice the user cannot apply.
 
-Findings carry `improves`, one of:
+**It reports on the repository the user is in.** That is the default, because it
+is almost always the question. Add `--global` for every repository on the
+machine.
+
+Two cases widen automatically: not being in a repository at all, and being in
+one with no recorded sessions. The second says so first —
+`No sessions recorded for …, so this covers the whole machine` — and then gives
+the machine-wide report. **Repeat that when you present it.** An empty
+repository is not a finding that its setup is fine, and the numbers below the
+notice answer a wider question than the one that was asked; a reader who misses
+that reads them against the wrong scope. `scope` in the JSON is always what was
+actually covered, so trust it over what the user typed.
+
+## The three passes
+
+Do them in this order. Each is cheaper than the next, and each one narrows what
+the next has to look at.
+
+### 1. What is wrong — the findings
+
+`findings`, ordered by weight. Lead with the top one. For each, give the
+**change** first and the evidence second. Every finding carries `improves`:
 
 | | |
 |---|---|
@@ -30,18 +58,89 @@ Findings carry `improves`, one of:
 | `skills` | which skills exist and how they are described |
 | `explore` | plugins worth trying |
 
-## Scope
+### 2. Where the effort went — the totals
 
-This covers every project on the machine. For one repository — which is where
-`context` findings become actionable — use `/lookback:repo` instead.
+`totals`, in the same payload. This is orientation, not advice: it names no
+change, so do not invent one from it.
+
+Attribution is **recorded, not estimated** — Claude Code stamps every record
+with `attributionSkill`, `attributionAgent` and `attributionPlugin`, and every
+assistant message with its own usage. So "this skill spent that" is a fact here,
+not a guess.
+
+`cache_read_tokens` is usually far larger than input and output and costs a
+fraction. A high ratio of `cache_creation` to `cache_read` means context is
+being rebuilt rather than reused — worth mentioning when it stands out. A
+subagent with few calls but heavy tokens is doing expensive work per
+invocation, which is a different problem from one that is merely used often.
+
+State the window the numbers cover (`first_seen` to `last_seen`). A total with
+no window is a number nobody can act on.
+
+### 3. Why it went wrong — the episodes
+
+Everything above counts. This one reads, and it is the only part that can say
+*why* a command failed thirty times or which sentence would have prevented a
+detour. Reach for it when the counted findings have not explained something, or
+when the user asks why sessions here keep struggling.
+
+```sh
+lookback episodes --repo . --budget 25000 --json
+```
+
+The transcripts are about a gigabyte, so **never read the corpus — read what the
+selector hands you.** What comes back is already excerpted and already inside
+the budget:
+
+- `kind` — `recovery` (failed, then worked), `thrash` (searched, wrote nothing),
+  `churn` (one file rewritten over and over)
+- `reason` — why it was selected, with the count behind it
+- `records` — the turns, condensed; long ones keep their head and tail
+- `not_read` — **check this before concluding anything is absent.** Above zero
+  means candidates were selected and did not fit, not that there was no more.
+
+For each excerpt, work out three things: what the model believed that was not
+true, what turned out to be true, and the sentence that would have saved the
+detour. The third is the deliverable; the first two are how you get there.
+
+**Group before proposing.** Four episodes that all come down to "the test
+command is not what it looks like" are one line in `CLAUDE.md`, not four.
+
+**Label these differently, because they are different.** A counted finding
+carries `basis: measured` and can be checked — the reader can run the query and
+disagree. A reading cannot. Anything from this pass is `basis: inferred` and
+must say so in the words used: "reading the transcript, it looks like…", not
+"your sessions show…".
+
+**Never propose a line without the excerpt behind it.** A counted finding earns
+trust by being checkable; a read one earns it by being quotable. Strip either
+away and the first wrong suggestion costs the credibility of every right one.
+
+**Say when an episode is inconclusive.** Plenty are. "Three of these seven say
+something; the rest do not" is a good report. Manufacturing seven findings from
+seven episodes is how this becomes noise.
+
+Going deeper, when the user asks for a thorough pass: `--out-dir` writes one
+self-contained file per episode and prints the paths. Dispatch one agent per
+file, each returning only the wrong belief, the true fact and the proposed line.
+You collect the judgements and never load an excerpt yourself. One call per
+episode instead of one call total, in exchange for a context that stays nearly
+empty. Do not default to it. Delete the directory afterwards.
 
 ## Rules
 
 **Never apply a change yourself.** Hand over the text; let the user paste it.
-Do not edit `settings.json`, `CLAUDE.md` or plugin configuration off a finding.
+Do not edit `settings.json`, `CLAUDE.md`, `AGENTS.md` or plugin configuration
+off a finding. The one exception in all of Lookback is `lookback install`, and
+this is not it. A finding is evidence, not an instruction: invite challenges and
+re-check a disputed claim against its source.
 
 **Quote the evidence.** Each finding carries counts so the user can disagree.
+A recommendation they cannot check is one they should not take.
 
 **Do not inflate.** An empty `findings` list means say so. A finding that does
 not fire is information: `effort-overkill` staying silent means the effort
 settings match the work, which is worth stating plainly rather than padding.
+
+**The data is the user's own conversations.** Quote the line that proves the
+point, not the surrounding paragraphs, and copy nothing anywhere else.
