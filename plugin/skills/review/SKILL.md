@@ -91,11 +91,16 @@ lookback episodes --repo . --budget 25000 --json
 The transcripts are about a gigabyte, so **never read the corpus — read what the
 selector hands you.**
 
-The payload is `{"readings": [...]}` — one reading per session source, each with
-its own `source` (`claude` or `omp`), `scope` and accounting. Present them
-separately and never merge them: an OMP episode argues for a line in `AGENTS.md`,
-never for a Claude Code permission rule. The `--budget` you pass is a ceiling
-shared across all of them, not one budget each.
+The payload is `{"readings": [...], "skipped": [...]}` — one reading per source
+that had something to read, each with its own `source` (`claude` or `omp`), `scope`
+and accounting, and a reason for every source left out. Present them separately and
+never merge them: an OMP episode argues for a line in `AGENTS.md`, never for a
+Claude Code permission rule.
+
+`--budget` is a ceiling across all of them and it is divided by how much each
+source actually holds, so a source with nothing to read takes none of it. Read
+`budget_tokens` on each reading to see what it was given rather than assuming an
+even split.
 
 Each reading is already excerpted and already inside its share of the budget:
 
@@ -105,6 +110,8 @@ Each reading is already excerpted and already inside its share of the budget:
 - `records` — the turns, condensed; long ones keep their head and tail
 - `not_read` — **check this before concluding anything is absent.** Above zero
   means candidates were selected and did not fit, not that there was no more.
+  Raising `--budget` is what reaches them; the whole increase goes to the sources
+  that have something left to read.
 
 For each excerpt, work out three things: what the model believed that was not
 true, what turned out to be true, and the sentence that would have saved the
