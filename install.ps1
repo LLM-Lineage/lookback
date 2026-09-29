@@ -261,8 +261,16 @@ if (-not $already) {
 }
 # This session, so the collection below and anything the user tries next work now
 # rather than after a restart.
-if (-not ($env:Path.Split(';') | Where-Object { $_ -eq $BinDir })) {
-    $env:Path = "$($env:Path);$BinDir"
+#
+# `$env:Path` rather than `$env:PATH` is correct on Windows, where environment
+# variables are case-insensitive — and is `$null` on Unix, where PowerShell's
+# environment provider is not. That matters only because running this script on a
+# Mac is how anybody here checks it at all: without the fallback it stops at this
+# line, after the download and both hash checks and before the plugin step, on a
+# difference that does not exist on the platform it ships to.
+$sessionPath = if ($env:Path) { $env:Path } elseif ($env:PATH) { $env:PATH } else { '' }
+if (-not ($sessionPath.Split(';') | Where-Object { $_ -eq $BinDir })) {
+    $env:Path = "${sessionPath};${BinDir}"
 }
 
 # --- 6. plugin ---------------------------------------------------------------
@@ -284,8 +292,17 @@ function Installed-Version {
 function Marketplace-Repo {
     # What Claude Code cached as this marketplace's source, read from its own file
     # rather than scraped out of `marketplace list`, whose output is for people.
-    $home = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.claude' }
-    $file = Join-Path $home 'plugins\known_marketplaces.json'
+    # Not `$home`: PowerShell's `$HOME` is an automatic variable, ReadOnly and
+    # AllScope, on every platform — and variable names are case-insensitive, so
+    # assigning to `$home` throws "Cannot overwrite variable HOME because it is
+    # read-only or constant". That is a hard failure at the plugin step, on
+    # Windows, for every user.
+    $claudeHome = if ($env:CLAUDE_CONFIG_DIR) {
+        $env:CLAUDE_CONFIG_DIR
+    } else {
+        Join-Path $env:USERPROFILE '.claude'
+    }
+    $file = Join-Path $claudeHome 'plugins\known_marketplaces.json'
     if (-not (Test-Path $file)) { return $null }
     try {
         $document = Get-Content -Raw $file | ConvertFrom-Json
@@ -335,8 +352,22 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 # the slowest thing it does. Doing it now means the first question a user asks is
 # answered immediately rather than after a minute of silence.
 Say 'reading what Claude Code has already written'
-& $BinPath collect
-if ($LASTEXITCODE -ne 0) { Warn 'run `lookback collect` yourself; nothing else is needed' }
+# `|| warn` in install.sh; a try/catch here, and it is not decoration.
+# `$ErrorActionPreference = 'Stop'` makes a *failure to launch* a terminating
+# error, so anything that stops the binary starting — a policy block, an
+# antivirus quarantine, a half-written file — kills the installer at its last
+# step with a stack trace. The install has already succeeded by this point: the
+# binary is placed and verified and the plugin is in. Collection is a head start,
+# not part of installing, so failing it must not look like a failed install.
+try {
+    & $BinPath collect
+    if ($LASTEXITCODE -ne 0) {
+        Warn 'run `lookback collect` yourself; nothing else is needed'
+    }
+} catch {
+    Warn "could not run ${BinPath}: $($_.Exception.Message)"
+    Warn 'the install is complete; run `lookback collect` yourself'
+}
 
 # Claude Code registers a plugin's skills when a session starts, so updating the
 # plugin under an open session leaves it with the previous version's commands and
