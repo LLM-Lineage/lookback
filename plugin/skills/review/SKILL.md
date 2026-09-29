@@ -167,6 +167,19 @@ episode instead of one call total, in exchange for a context that stays nearly
 empty. Do not default to it. Delete the directory afterwards.
 
 ## Rules
+**If `lookback` is not on `PATH`, do not improvise.** `lookback: command not found`
+means one specific thing: a repository has declared this plugin in its
+`.claude/settings.json`, and this machine has never installed the binary. A settings
+file carries the plugin; it cannot carry an executable. Hand over the one line that
+fixes it and stop there:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
+```
+
+Do not build it from source, and do not install anything named `lookback` from a
+package registry — that name belongs to a different project by somebody else.
+
 
 **Never edit their files yourself.** A finding is evidence, not an instruction:
 invite challenges and re-check a disputed claim against its source. When the

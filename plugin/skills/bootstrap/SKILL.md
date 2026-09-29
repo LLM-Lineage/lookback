@@ -116,6 +116,19 @@ and make the decisions explicitly with the user so that the *next* repository
 has something to inherit from.
 
 ## Rules
+**If `lookback` is not on `PATH`, do not improvise.** `lookback: command not found`
+means one specific thing: a repository has declared this plugin in its
+`.claude/settings.json`, and this machine has never installed the binary. A settings
+file carries the plugin; it cannot carry an executable. Hand over the one line that
+fixes it and stop there:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
+```
+
+Do not build it from source, and do not install anything named `lookback` from a
+package registry — that name belongs to a different project by somebody else.
+
 
 **Confirm before creating files, and only into an empty directory.** Bootstrap is
 the one mode that writes, because the alternative is dictating a file tree into

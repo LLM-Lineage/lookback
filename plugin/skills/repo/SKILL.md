@@ -51,6 +51,19 @@ The distinction that matters: a fact goes in `CLAUDE.md`, a permission goes in
 settings, a procedure becomes a skill.
 
 ## Rules
+**If `lookback` is not on `PATH`, do not improvise.** `lookback: command not found`
+means one specific thing: a repository has declared this plugin in its
+`.claude/settings.json`, and this machine has never installed the binary. A settings
+file carries the plugin; it cannot carry an executable. Hand over the one line that
+fixes it and stop there:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
+```
+
+Do not build it from source, and do not install anything named `lookback` from a
+package registry — that name belongs to a different project by somebody else.
+
 
 **Never apply a change yourself — use the command instead.** When the user has
 read a line and asked for it, do not reach for `Edit` on their memory file:
