@@ -92,6 +92,41 @@ print((entry.get("source") or {}).get("repo", ""))
 MKT
 }
 
+# Where OMP keeps its own marketplace registry, which is a different file in a
+# different directory from Claude Code's and has the same stale-name problem.
+OMP_HOME="${OMP_CONFIG_DIR:-${HOME}/.omp}"
+
+# What OMP has cached as this marketplace's source, empty when it has no entry.
+omp_marketplace_repo() {
+  python3 - "${OMP_HOME}/marketplaces.json" "${MARKETPLACE_NAME}" <<'OMPMKT'
+import json, sys
+try:
+    document = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for entry in document.get("marketplaces", []):
+    if entry.get("name") == sys.argv[2]:
+        print(entry.get("sourceUri", ""))
+        break
+OMPMKT
+}
+
+# What OMP currently has installed, for telling an update from a no-op.
+omp_installed_version() {
+  omp plugin list --json 2>/dev/null | python3 - "${PLUGIN}" <<'OMPVER'
+import json, sys
+try:
+    document = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for plugin in document.get("marketplace", []):
+    if plugin.get("id") == sys.argv[1]:
+        for entry in plugin.get("entries", []):
+            print(entry.get("version", ""))
+            sys.exit(0)
+OMPVER
+}
+
 # The version Claude Code currently has, for telling an update from a no-op.
 # `claude plugin update` says "Checking for updates…" either way, which is how
 # somebody ends up with a new binary, old commands, and nothing saying so.
@@ -254,6 +289,37 @@ if command -v claude >/dev/null 2>&1; then
 
   claude plugin marketplace add "${MARKET}" 2>/dev/null \
     || claude plugin marketplace update "${MARKETPLACE_NAME}" 2>/dev/null || true
+
+  # Let Claude Code keep the plugin current by itself. `autoUpdate` is a
+  # per-marketplace flag in `extraKnownMarketplaces`, and `marketplace add` does
+  # not set it — so every install so far has been one somebody had to remember to
+  # update. This is the host's own mechanism rather than anything of ours: the
+  # setting is Claude Code's, it updates on Claude Code's schedule, and removing
+  # the line turns it off.
+  python3 - "${CLAUDE_HOME}/settings.json" "${MARKETPLACE_NAME}" <<'AUTOUP'
+import json, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+try:
+    document = json.loads(path.read_text())
+except Exception:
+    # No settings file, or one this script should not be rewriting blind.
+    sys.exit(0)
+
+marketplaces = document.get("extraKnownMarketplaces")
+entry = marketplaces.get(sys.argv[2]) if isinstance(marketplaces, dict) else None
+if not isinstance(entry, dict) or entry.get("autoUpdate") is True:
+    sys.exit(0)
+
+entry["autoUpdate"] = True
+# Written back with the same indentation Claude Code uses, and with every other
+# key untouched and in its original order.
+path.write_text(json.dumps(document, indent=2) + "\n")
+print("enabled")
+AUTOUP
+  if [ -n "$(python3 -c "import json,sys;d=json.load(open('${CLAUDE_HOME}/settings.json'));m=d.get('extraKnownMarketplaces',{}).get('${MARKETPLACE_NAME}',{});print('y' if m.get('autoUpdate') else '')" 2>/dev/null)" ]; then
+    say "Claude Code will keep the plugin up to date by itself"
+  fi
   # Anchored: a substring match also matched `lookback@lineage-llm-src`, the
   # local development install, so this took the update path for a plugin that
   # was not there.
@@ -270,6 +336,42 @@ if command -v claude >/dev/null 2>&1; then
   fi
 else
   warn "claude not found; then: claude plugin marketplace add ${MARKET} && claude plugin install ${PLUGIN}"
+fi
+
+# --- 6b. the OMP plugin ------------------------------------------------------
+# This block did not exist, and that is why OMP drifted. The installer updated
+# Claude Code's plugin every run and left OMP's wherever it was first put: six
+# releases behind on the machine that found it, with `lookback review --source
+# omp` reading a 0.6.1 plugin against a 0.7.3 store and nothing saying so.
+#
+# `install --force` rather than `upgrade`. `omp plugin upgrade` reports "All
+# marketplace plugins are up to date" with 0.6.1 installed and 0.7.3 in its own
+# freshly-refreshed cache, so it cannot be relied on to notice. A forced install
+# from the marketplace is the operation that actually lands the current version.
+if command -v omp >/dev/null 2>&1; then
+  say "installing the OMP plugin"
+
+  # The same rename repair as above. OMP stores its registry in
+  # ~/.omp/marketplaces.json, so the Claude-side fix never touched it and every
+  # OMP install is still pointing at the old name through a redirect.
+  omp_stored="$(omp_marketplace_repo)"
+  if [ -n "${omp_stored}" ] && [ "${omp_stored}" != "${MARKET}" ]; then
+    warn "OMP's marketplace points at ${omp_stored}; re-pointing it at ${MARKET}"
+    omp plugin marketplace remove "${MARKETPLACE_NAME}" >/dev/null 2>&1 || true
+  fi
+
+  omp plugin marketplace add "${MARKET}" >/dev/null 2>&1 \
+    || omp plugin marketplace update "${MARKETPLACE_NAME}" >/dev/null 2>&1 || true
+
+  omp_before="$(omp_installed_version)"
+  if omp plugin install "${PLUGIN}" --force >/dev/null 2>&1; then
+    omp_after="$(omp_installed_version)"
+    if [ -n "${omp_after}" ] && [ "${omp_after}" != "${omp_before}" ]; then
+      say "OMP plugin ${omp_before:-none} -> ${omp_after}"
+    fi
+  else
+    warn "run: omp plugin install ${PLUGIN} --force"
+  fi
 fi
 
 # --- 7. first collection -----------------------------------------------------

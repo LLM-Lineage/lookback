@@ -17,6 +17,12 @@ catalogue Claude Code has already cached. The single exception is opt-in and
 named: `lookback bootstrap --org <name>` reads your organization's repository
 listing through your own `gh` CLI, and sends nothing from the local store.
 
+The one exception is the update check, and it is worth being exact about: at most
+one request a day, for a release tag, from a cache beside the store. It carries no
+query, no body and no identifier, and nothing about your corpus is in it.
+`LOOKBACK_NO_UPDATE_CHECK=1` turns it off. Collection and reporting still make no
+network call at all.
+
 **Lookback proposes; you apply.** Nothing it reports edits your
 `settings.json`, `CLAUDE.md` or `AGENTS.md` — not the CLI, and not the agent
 reading its findings. You are handed the exact text to paste. The two exceptions
@@ -115,7 +121,16 @@ reporting. `lookback review --global` is unaffected either way.
 ### Updating
 
 **Re-running the installer is the update path.** It replaces the binary, updates
-the plugin, and leaves your collected store alone.
+**both** plugins — Claude Code's and OMP's — and leaves your collected store alone.
+
+`lookback self-update` does the same thing without you having to remember the URL,
+and `lookback self-update --check` just reports. Lookback never updates itself: it
+mentions a newer release once a day at most, on stderr, and waits to be asked.
+
+Claude Code keeps the plugin current on its own, because the installer sets
+`autoUpdate` on the marketplace entry. OMP has no equivalent, so its plugin moves
+when the installer runs — which is why it is worth re-running even when the binary
+is current.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh

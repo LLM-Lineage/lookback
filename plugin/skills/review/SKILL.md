@@ -180,6 +180,12 @@ curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.s
 Do not build it from source, and do not install anything named `lookback` from a
 package registry — that name belongs to a different project by somebody else.
 
+**If the command prints an update notice on stderr, pass it on.** It names the
+running version, the newer one and the command. Say it once, plainly, and carry on
+with the answer the user asked for — it is a courtesy, not a finding, and not a
+reason to stop. Do not run the update yourself: `lookback self-update` and the
+installer replace a binary, which is the user's call.
+
 
 **Never edit their files yourself.** A finding is evidence, not an instruction:
 invite challenges and re-check a disputed claim against its source. When the

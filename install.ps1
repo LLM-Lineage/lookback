@@ -332,6 +332,33 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     & claude plugin marketplace add $Market 2>$null
     if ($LASTEXITCODE -ne 0) { & claude plugin marketplace update $MarketplaceName 2>$null }
 
+    # Let Claude Code keep the plugin current by itself. `autoUpdate` is a
+    # per-marketplace flag in `extraKnownMarketplaces` and `marketplace add` does
+    # not set it, so every install so far has been one somebody had to remember to
+    # update. This is the host's own mechanism: its setting, its schedule, and
+    # removing the line turns it off.
+    $claudeHome = if ($env:CLAUDE_CONFIG_DIR) {
+        $env:CLAUDE_CONFIG_DIR
+    } else {
+        Join-Path $env:USERPROFILE '.claude'
+    }
+    $settingsPath = Join-Path $claudeHome 'settings.json'
+    if (Test-Path $settingsPath) {
+        try {
+            $settings = Get-Content -Raw $settingsPath | ConvertFrom-Json
+            $entry = $settings.extraKnownMarketplaces.PSObject.Properties |
+                     Where-Object { $_.Name -eq $MarketplaceName } |
+                     Select-Object -First 1
+            if ($entry -and -not $entry.Value.autoUpdate) {
+                $entry.Value | Add-Member -NotePropertyName autoUpdate -NotePropertyValue $true -Force
+                $settings | ConvertTo-Json -Depth 32 | Set-Content -Path $settingsPath
+                Say 'Claude Code will keep the plugin up to date by itself'
+            }
+        } catch {
+            # A settings file this cannot parse is not one to rewrite blind.
+        }
+    }
+
     $listing = & claude plugin list 2>$null
     $present = $listing -and ($listing -match "(^|[^-\w])$([regex]::Escape($Plugin))([^-\w]|$)")
     if ($present) {
@@ -345,6 +372,43 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     }
 } else {
     Warn "claude not found; then: claude plugin marketplace add $Market && claude plugin install $Plugin"
+}
+
+# --- 6b. the OMP plugin ------------------------------------------------------
+# This block did not exist on either installer, and that is why OMP drifted: the
+# Claude plugin was updated every run and OMP's was left wherever it was first
+# put. `install --force` rather than `upgrade`, because `omp plugin upgrade`
+# reports everything up to date with an older version installed and the current
+# one in its own freshly-refreshed cache.
+function Omp-Marketplace-Repo {
+    $ompHome = if ($env:OMP_CONFIG_DIR) { $env:OMP_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.omp' }
+    $file = Join-Path $ompHome 'marketplaces.json'
+    if (-not (Test-Path $file)) { return $null }
+    try {
+        $document = Get-Content -Raw $file | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+    $entry = $document.marketplaces | Where-Object { $_.name -eq $MarketplaceName } | Select-Object -First 1
+    if ($entry) { $entry.sourceUri } else { $null }
+}
+
+if (Get-Command omp -ErrorAction SilentlyContinue) {
+    Say 'installing the OMP plugin'
+
+    # The same rename repair as above. OMP keeps its registry in
+    # ~/.omp/marketplaces.json, which the Claude-side fix never touched.
+    $ompStored = Omp-Marketplace-Repo
+    if ($ompStored -and $ompStored -ne $Market) {
+        Warn "OMP's marketplace points at $ompStored; re-pointing it at $Market"
+        & omp plugin marketplace remove $MarketplaceName 2>$null
+    }
+
+    & omp plugin marketplace add $Market 2>$null
+    if ($LASTEXITCODE -ne 0) { & omp plugin marketplace update $MarketplaceName 2>$null }
+
+    & omp plugin install $Plugin --force 2>$null
+    if ($LASTEXITCODE -ne 0) { Warn "run: omp plugin install $Plugin --force" }
 }
 
 # --- 7. first collection -----------------------------------------------------
