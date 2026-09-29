@@ -28,9 +28,41 @@ repository's scaffolding after asking.
 
 ## Install
 
+There are two levels, and **the first one is all most people need.**
+
+### 1. Your account — the binary and the plugin
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.sh | sh
 ```
+
+This is what "install Lookback" means, and **you do not have to ask for a
+particular scope** — this is the one. It puts `lookback` on your `PATH` and
+installs the plugin at Claude Code's **user** scope, so `/lookback:review` works in
+every session on this machine, in every repository.
+
+Nothing about it is per-project, and nothing needs to be repeated per project.
+
+### 2. A repository — so your team gets it too
+
+```sh
+lookback install            # print the change
+lookback install --write    # apply it
+```
+
+This declares the plugin in that repository's `.claude/settings.json`, so it
+arrives with the clone and nobody has to be told it exists. Details under
+[Giving a repository Lookback of its own](#giving-a-repository-lookback-of-its-own).
+
+**It does not remove step 1 for anyone.** The repository carries the plugin; the
+plugin's commands run the `lookback` binary, and a repository cannot carry a
+binary. So each teammate still runs the one-liner above once — after which every
+repository they clone that has step 2 applied simply works.
+
+| | installs | who needs it |
+|---|---|---|
+| the one-liner | the `lookback` binary, and the plugin at user scope | everyone, once per machine |
+| `lookback install --write` | a line in the repo's `.claude/settings.json` | once per repository, by anyone |
 
 ### What the installer does
 
@@ -42,6 +74,20 @@ curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.s
 3. Adds `lookback` as a Claude Code marketplace and installs the plugin.
 4. Runs the first collection, so the first question you ask is answered
    immediately rather than after a minute of silence.
+
+**Step 4 is a head start, not part of installing.** It reads files under
+`~/.claude` and `~/.omp/agent`, writes only to `~/.lookback`, and opens no socket —
+but an agent installing this on your behalf may have its own guard stop it, because
+"reads your transcripts" is the shape of something worth checking. Nothing is
+broken if it is skipped:
+
+- `lookback review` collects for itself, so it works either way — just slower the
+  first time.
+- `lookback rules`, `cost`, `report` and `episodes` read the store and will say
+  `no store at …. Run ``lookback collect`` first.` until a collection has happened.
+
+So if that step is blocked or skipped, run `lookback collect` once, or simply start
+with `lookback review`.
 
 Platforms: macOS (Apple Silicon and Intel) and Linux (x86-64 and arm64).
 Requires `python3`, `curl`, and `sha256sum` or `shasum`.
@@ -319,7 +365,21 @@ lookback install --target /path/to/repo --write   # apply it
 
 Merges `enabledPlugins` and `extraKnownMarketplaces` into that repository's
 `.claude/settings.json`, leaving everything else — including key order — alone.
-Everyone who clones it then gets Lookback without being told to install it.
+Everyone who clones it then gets Lookback without being told it exists.
+
+Two things to know before you commit it:
+
+- **Each person still installs the binary once.** The repository declares the
+  plugin; the plugin's commands run `lookback`, and a settings file cannot carry an
+  executable. A teammate who has never run the one-liner gets the commands and a
+  `lookback: command not found` from them.
+- **This is the only file Lookback ever writes without being asked twice**, and
+  even here it prints the change and does nothing until `--write`. It is not an
+  exception to "Lookback proposes, you apply" — you asked for one specific change
+  by name.
+
+Review the diff before committing it, the same as any other change to a file your
+team shares.
 
 ### Reading what went wrong
 

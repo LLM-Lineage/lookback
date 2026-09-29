@@ -51,6 +51,26 @@ claims.
 5. **Hand over the draft first.** Apply only a specific edit the user explicitly
    requests, after inspecting the target and showing the diff and scope.
 
+6. **Offer to make the repository carry Lookback**, once — this is the moment for
+   it, and nothing else in the flow raises it:
+
+   ```sh
+   lookback install            # prints the change
+   lookback install --write    # applies it
+   ```
+
+   It merges `enabledPlugins` and `extraKnownMarketplaces` into the repository's
+   `.claude/settings.json`, so whoever clones it gets `/lookback:review` without
+   being told Lookback exists. Say two things when you offer it:
+
+   - it is a change to a file the team shares, so it wants reviewing and
+     committing like any other;
+   - **it carries the plugin, not the binary.** A settings file cannot hold an
+     executable, so a teammate who has never run the installer gets the commands
+     and `lookback: command not found` from them. They each run the one-liner once.
+
+   Offer it; do not run `--write` unless the user asks for it.
+
 ## What makes a good CLAUDE.md here
 
 The devloop gives you the commands. What makes the file worth reading is the
