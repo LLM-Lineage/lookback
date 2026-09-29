@@ -77,6 +77,30 @@ invocation, which is a different problem from one that is merely used often.
 State the window the numbers cover (`first_seen` to `last_seen`). A total with
 no window is a number nobody can act on.
 
+**Quote `active_hours`, not the span, when you say how much work this was.**
+Claude Code reuses one session id across `--continue` and `--resume`, so a
+"session" is a file that can cover weeks and `first_seen` to `last_seen` is
+calendar time. `active_hours` sums the gaps between consecutive turns and discards
+any gap over thirty minutes. On the corpus this was written against the span was
+five months and the work was 210 hours; treating the span as effort overstates it
+by more than ten times.
+
+`turns_per_prompt` and `calls_per_prompt` say how much happens between one
+instruction and the next. Neither is a problem in either direction — a corpus at
+57 turns per prompt is being used very differently from one at three, and saying
+which it is tells the reader something no finding does.
+
+**`failed_calls`, `failures_by_command` and `interruptions` are where effort was
+lost.** They are still orientation: name them, do not turn them into advice. The
+`failing-command` finding is the actionable half and it fires on a different
+question — a prefix failing at least half the time — so a tool called 2,000 times
+and failing 300 appears here and in no finding.
+
+`interruptions` is the one measured signal that Claude was going the wrong way:
+every other number counts what was attempted, not what a person decided to stop.
+Report it plainly and without apology or inference — it is a count, and the reason
+behind any one of them is in the transcript, not in the total.
+
 ### 3. Why it went wrong — the episodes
 
 Everything above counts. This one reads, and it is the only part that can say
