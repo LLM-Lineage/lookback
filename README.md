@@ -46,6 +46,14 @@ curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.s
 Platforms: macOS (Apple Silicon and Intel) and Linux (x86-64 and arm64).
 Requires `python3`, `curl`, and `sha256sum` or `shasum`.
 
+**Windows is not shipped yet.** There is a Windows build and a PowerShell
+installer, and both work as far as they can be checked without Windows — but
+nothing has yet run the test suite there, and the differences that matter on
+Windows are the quiet kind: a report that covers the whole machine when you asked
+about one repository. Rather than ship that and let you find out, it waits for a
+green test run on Windows. If you want it sooner, say so — knowing somebody is
+waiting is the thing most likely to move it.
+
 ### Updating
 
 **Re-running the installer is the update path.** It replaces the binary, updates
