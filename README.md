@@ -46,13 +46,25 @@ curl -fsSL https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.s
 Platforms: macOS (Apple Silicon and Intel) and Linux (x86-64 and arm64).
 Requires `python3`, `curl`, and `sha256sum` or `shasum`.
 
-**Windows is not shipped yet.** There is a Windows build and a PowerShell
-installer, and both work as far as they can be checked without Windows — but
-nothing has yet run the test suite there, and the differences that matter on
-Windows are the quiet kind: a report that covers the whole machine when you asked
-about one repository. Rather than ship that and let you find out, it waits for a
-green test run on Windows. If you want it sooner, say so — knowing somebody is
-waiting is the thing most likely to move it.
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/LLM-Lineage/lookback/main/install.ps1 | iex
+```
+
+Windows 10 or 11, x64. Windows PowerShell 5.1 works; so does PowerShell 7. The
+binary lands in `%USERPROFILE%\.lookback\bin`, which is added to your user `Path`
+— open a new terminal to pick it up. On Windows on ARM the x64 build runs under
+emulation, and the installer says so.
+
+Re-running it is the update path, and `-Uninstall` removes it
+(`-Uninstall -Purge` takes the collected store too).
+
+**This is new.** The Windows build was shipped as soon as it existed rather than
+after a long soak, so treat it as newer than the rest. The things most likely to be
+wrong are path-shaped: if `lookback review` in a repository reports numbers that
+look like they cover your whole machine, that is the bug to report and it is worth
+reporting. `lookback review --global` is unaffected either way.
 
 ### Updating
 

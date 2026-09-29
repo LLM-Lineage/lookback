@@ -135,7 +135,33 @@ function Asset-Url {
 $archiveUrl = Asset-Url $archiveName
 $sumsUrl    = Asset-Url 'checksums.json'
 
-if (-not $archiveUrl) { Die "no $archiveName in $version" }
+if (-not $archiveUrl) {
+    # The installer reaches the distribution repository before the Windows binary
+    # does. That is deliberate — the build works and the suite has never run on
+    # Windows, so the artifact is held back — but "no <file> in <version>" reads
+    # like a broken release, and the first thing a Windows user would do is report
+    # one. Say which of the two it is.
+    $shipped = $release.assets |
+               Where-Object { $_.name -like "$Product-*" } |
+               ForEach-Object { $_.name }
+    if ($shipped) {
+        Write-Host ""
+        Write-Host " Windows is not published yet." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host " $version is a complete release - it just has no Windows binary in it."
+        Write-Host " The build works and this installer works; what is missing is a test"
+        Write-Host " run on Windows. The differences that matter there are the quiet kind"
+        Write-Host " (a report covering the whole machine when you asked about one"
+        Write-Host " repository), so it is held back rather than shipped untested."
+        Write-Host ""
+        Write-Host " Watch https://github.com/$Repo/releases for a"
+        Write-Host " $Product-<version>-$target.zip asset, and say so on the repository if"
+        Write-Host " you are waiting - knowing somebody is moves it."
+        Write-Host ""
+        exit 1
+    }
+    Die "no $archiveName in $version"
+}
 # A release with no manifest cannot be verified, and an unverifiable release is
 # not one to install.
 if (-not $sumsUrl) { Die "no checksums.json in $version; refusing to install unverified" }
