@@ -89,8 +89,15 @@ lookback episodes --repo . --budget 25000 --json
 ```
 
 The transcripts are about a gigabyte, so **never read the corpus — read what the
-selector hands you.** What comes back is already excerpted and already inside
-the budget:
+selector hands you.**
+
+The payload is `{"readings": [...]}` — one reading per session source, each with
+its own `source` (`claude` or `omp`), `scope` and accounting. Present them
+separately and never merge them: an OMP episode argues for a line in `AGENTS.md`,
+never for a Claude Code permission rule. The `--budget` you pass is a ceiling
+shared across all of them, not one budget each.
+
+Each reading is already excerpted and already inside its share of the budget:
 
 - `kind` — `recovery` (failed, then worked), `thrash` (searched, wrote nothing),
   `churn` (one file rewritten over and over)
@@ -121,7 +128,8 @@ something; the rest do not" is a good report. Manufacturing seven findings from
 seven episodes is how this becomes noise.
 
 Going deeper, when the user asks for a thorough pass: `--out-dir` writes one
-self-contained file per episode and prints the paths. Dispatch one agent per
+self-contained file per episode and prints the paths, each named for the source
+it came from (`claude-00-recovery.json`). Dispatch one agent per
 file, each returning only the wrong belief, the true fact and the proposed line.
 You collect the judgements and never load an excerpt yourself. One call per
 episode instead of one call total, in exchange for a context that stays nearly
