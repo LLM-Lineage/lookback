@@ -83,47 +83,137 @@ CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 marketplace_repo() {
   python3 - "${CLAUDE_HOME}/plugins/known_marketplaces.json" "${MARKETPLACE_NAME}" <<'MKT'
 import json, sys
+# One guard around the decode *and* the traversal. Structurally valid JSON of an
+# unexpected shape — a null where an object belongs, a list at the top level —
+# raises just as readily as a syntax error, and an uncaught raise here exits 1.
+# The caller assigns this in a command substitution under `set -e`, so that
+# would end the install rather than fall through to "nothing cached".
 try:
     document = json.load(open(sys.argv[1]))
+    entry = document.get(sys.argv[2]) or {}
+    print((entry.get("source") or {}).get("repo", ""))
 except Exception:
     sys.exit(0)
-entry = document.get(sys.argv[2]) or {}
-print((entry.get("source") or {}).get("repo", ""))
 MKT
 }
 
 # Where OMP keeps its own marketplace registry, which is a different file in a
 # different directory from Claude Code's and has the same stale-name problem.
-OMP_HOME="${OMP_CONFIG_DIR:-${HOME}/.omp}"
+#
+# Resolved the way omp 18.3.5 was *observed* to resolve it, by planting a
+# marketplace with the real binary under a sandboxed HOME and finding which
+# `marketplaces.json` it wrote (2026-10-02, re-measured 2026-10-03):
+#
+#   neither                           ->  ${HOME}/.omp
+#   PI_CONFIG_DIR=custom-omp          ->  ${HOME}/custom-omp
+#   PI_PROFILE=work                   ->  ${HOME}/.omp/profiles/work
+#   PI_CONFIG_DIR + PI_PROFILE        ->  ${HOME}/custom-omp/profiles/work
+#   XDG_DATA_HOME with omp/ present   ->  ${XDG_DATA_HOME}/omp
+#   the same, plus PI_CONFIG_DIR      ->  ${XDG_DATA_HOME}/omp   (PI_CONFIG_DIR
+#                                                                 is ignored)
+#   the same, plus PI_PROFILE=work    ->  ${HOME}/.omp/profiles/work  (XDG is
+#                                                                      ignored)
+#
+# Three things that are easy to get wrong, each one measured rather than
+# reasoned about:
+#
+#  1. **The XDG rule is real, and it is conditional on the directory existing.**
+#     An earlier pass here recorded the opposite, from an experiment that
+#     created ${XDG_DATA_HOME} but not ${XDG_DATA_HOME}/omp — so the condition
+#     was false, omp fell back to ${HOME}/.omp, and that was written down as
+#     "omp does not follow XDG". With ${XDG_DATA_HOME}/omp present omp puts
+#     `marketplaces.json` there, which on a machine that has one made this
+#     function read a registry omp never writes and report no stale marketplace
+#     whatever was actually registered.
+#
+#     `logs/` is the trap: it stays in the *config* directory even when the
+#     registry moves to the XDG data directory, so watching where the logs land
+#     measures the wrong thing. The only reliable probe is where
+#     `marketplaces.json` itself is written.
+#
+#  2. **The XDG branch only applies when no profile is selected**, and it beats
+#     PI_CONFIG_DIR when it does apply.
+#
+#  3. **OMP_PROFILE wins over PI_PROFILE by being *set*, not by being
+#     non-empty.** `OMP_PROFILE= PI_PROFILE=frompi` resolves to the base
+#     directory, not to profiles/frompi. Profile values are trimmed, and the
+#     literal `default` means the base directory rather than profiles/default.
+#
+# PI_CONFIG_DIR is a directory *name* joined under home, not a path — omp joins
+# it itself, so passing an absolute path there does not do what it looks like.
+#
+# `OMP_CONFIG_DIR`, which this line used to read, is the one name that really is
+# invented: the string occurs nowhere in the omp binary and setting it changes
+# nothing. No fallback is kept for it, and release.test.sh greps for exactly
+# that.
+omp_registry() {
+  # By presence, not by emptiness — see (3) above.
+  if [ -n "${OMP_PROFILE+set}" ]; then
+    omp_profile="${OMP_PROFILE}"
+  else
+    omp_profile="${PI_PROFILE:-}"
+  fi
+  omp_profile="$(printf '%s' "${omp_profile}" \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  [ "${omp_profile}" = "default" ] && omp_profile=""
+
+  # The data directory, and only without a profile — see (2).
+  if [ -z "${omp_profile}" ] \
+     && [ -n "${XDG_DATA_HOME:-}" ] \
+     && [ -d "${XDG_DATA_HOME}/omp" ]; then
+    printf '%s/omp/marketplaces.json\n' "${XDG_DATA_HOME}"
+  elif [ -n "${omp_profile}" ]; then
+    printf '%s/%s/profiles/%s/marketplaces.json\n' \
+      "${HOME}" "${PI_CONFIG_DIR:-.omp}" "${omp_profile}"
+  else
+    printf '%s/%s/marketplaces.json\n' "${HOME}" "${PI_CONFIG_DIR:-.omp}"
+  fi
+}
 
 # What OMP has cached as this marketplace's source, empty when it has no entry.
 omp_marketplace_repo() {
-  python3 - "${OMP_HOME}/marketplaces.json" "${MARKETPLACE_NAME}" <<'OMPMKT'
+  python3 - "$(omp_registry)" "${MARKETPLACE_NAME}" <<'OMPMKT'
 import json, sys
+# Guarded through the traversal, like the reader above and like the PowerShell
+# side: `{"marketplaces": null}` makes the loop raise, not the decode.
 try:
     document = json.load(open(sys.argv[1]))
+    for entry in document.get("marketplaces", []):
+        if entry.get("name") == sys.argv[2]:
+            print(entry.get("sourceUri", ""))
+            break
 except Exception:
     sys.exit(0)
-for entry in document.get("marketplaces", []):
-    if entry.get("name") == sys.argv[2]:
-        print(entry.get("sourceUri", ""))
-        break
 OMPMKT
 }
 
 # What OMP currently has installed, for telling an update from a no-op.
+#
+# The listing is passed as an argument, never piped. This was
+# `omp plugin list --json | python3 - "${PLUGIN}" <<'OMPVER'`, and a
+# here-document *is* stdin: it overrode the pipe, so `json.load(sys.stdin)`
+# parsed the Python program's own text, failed, and the function printed
+# nothing on every run since it was written. The installer therefore never once
+# reported the OMP plugin's version or a change. shellcheck names it SC2259,
+# which is why release.test.sh now gates on `shellcheck -S error`.
 omp_installed_version() {
-  omp plugin list --json 2>/dev/null | python3 - "${PLUGIN}" <<'OMPVER'
+  python3 - "${PLUGIN}" "$(omp plugin list --json 2>/dev/null)" <<'OMPVER'
 import json, sys
+# The decode was guarded and the traversal was not, which made this *worse* than
+# the version it replaced: the old reader was broken and returned empty, while
+# this one raised on `{"marketplace": null}`, on a top-level list, and on an
+# entry whose `entries` is null. `omp_before="$(omp_installed_version)"` under
+# `set -e` turns that raise into a dead installer, so a listing from a different
+# omp version would stop the install instead of reaching the warning below.
 try:
-    document = json.load(sys.stdin)
+    document = json.loads(sys.argv[2])
+    for plugin in document.get("marketplace", []):
+        if plugin.get("id") == sys.argv[1]:
+            for entry in plugin.get("entries", []):
+                print(entry.get("version", ""))
+                sys.exit(0)
 except Exception:
     sys.exit(0)
-for plugin in document.get("marketplace", []):
-    if plugin.get("id") == sys.argv[1]:
-        for entry in plugin.get("entries", []):
-            print(entry.get("version", ""))
-            sys.exit(0)
 OMPVER
 }
 
@@ -360,14 +450,36 @@ if command -v omp >/dev/null 2>&1; then
     omp plugin marketplace remove "${MARKETPLACE_NAME}" >/dev/null 2>&1 || true
   fi
 
-  omp plugin marketplace add "${MARKET}" >/dev/null 2>&1 \
-    || omp plugin marketplace update "${MARKETPLACE_NAME}" >/dev/null 2>&1 || true
+  # Whether the marketplace was actually refreshed, which is what makes a
+  # later "already current" a claim about the published release rather than a
+  # claim about omp's cache. `add` failing is the ordinary path — the name is
+  # already registered — so `update` is the one that has to succeed then.
+  omp_refreshed=yes
+  if ! omp plugin marketplace add "${MARKET}" >/dev/null 2>&1 \
+     && ! omp plugin marketplace update "${MARKETPLACE_NAME}" >/dev/null 2>&1; then
+    omp_refreshed=no
+    warn "could not refresh OMP's marketplace; the install below can only use what it has cached"
+  fi
 
+  # Always report the outcome. The symptom users saw was silence, not a wrong
+  # number: the old `if` printed only on a change, and omp_installed_version
+  # could never return one, so there was no path to any message at all.
   omp_before="$(omp_installed_version)"
   if omp plugin install "${PLUGIN}" --force >/dev/null 2>&1; then
     omp_after="$(omp_installed_version)"
-    if [ -n "${omp_after}" ] && [ "${omp_after}" != "${omp_before}" ]; then
+    if [ -z "${omp_after}" ]; then
+      warn "OMP installed ${PLUGIN} but reported no version for it"
+    elif [ "${omp_after}" != "${omp_before}" ]; then
       say "OMP plugin ${omp_before:-none} -> ${omp_after}"
+    elif [ "${omp_refreshed}" = yes ]; then
+      say "OMP plugin ${omp_after}, already current"
+    else
+      # Equality proves *unchanged*, not *current*. With both marketplace
+      # operations failed, a forced install can still succeed from cached files
+      # and leave the version where it was — which is how an install reported
+      # "already current" while sitting releases behind the marketplace it
+      # could not reach.
+      warn "OMP plugin ${omp_after} unchanged, and its marketplace could not be refreshed, so whether that is the current release is unknown"
     fi
   else
     warn "run: omp plugin install ${PLUGIN} --force"

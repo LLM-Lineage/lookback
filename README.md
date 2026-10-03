@@ -11,24 +11,37 @@ actually configured, and hands you the change to make: the permission rule to
 add, the instruction you have retyped in nine sessions that belongs in
 `CLAUDE.md`, the skill nobody invokes, the devloop a repository never wrote down.
 
-**Everything stays on your machine.** There are no network calls in collection or
-in reporting — including the plugin suggestions, which match against the
-catalogue Claude Code has already cached. The single exception is opt-in and
-named: `lookback bootstrap --org <name>` reads your organization's repository
-listing through your own `gh` CLI, and sends nothing from the local store.
+**Everything stays on your machine.** Collection and reporting make no network
+call at all — including the plugin suggestions, which match against the catalogue
+Claude Code has already cached.
 
-The one exception is the update check, and it is worth being exact about: at most
-one request a day, for a release tag, from a cache beside the store. It carries no
-query, no body and no identifier, and nothing about your corpus is in it.
-`LOOKBACK_NO_UPDATE_CHECK=1` turns it off. Collection and reporting still make no
-network call at all.
+Three commands are the exceptions, and they are named here because that is the
+whole of the list. `lookback bootstrap --org <name>` reads your organization's
+repository listing through your own `gh` CLI, and sends nothing from the local
+store. The update check asks GitHub for the latest release tag, and it is worth
+being exact about: at most one request a day, from a cache beside the store,
+carrying no query, no body and no identifier, with nothing about your corpus in
+it. `LOOKBACK_NO_UPDATE_CHECK=1` turns off that automatic notice — while
+`lookback self-update --check` asks whenever you type it, because you asked, and
+says so when it could not. And `lookback self-update` downloads the installer you
+would otherwise run by hand.
 
-**Lookback proposes; you apply.** Nothing it reports edits your
+**Lookback proposes; you apply.** Nothing it *reports* edits your
 `settings.json`, `CLAUDE.md` or `AGENTS.md` — not the CLI, and not the agent
-reading its findings. You are handed the exact text to paste. The two exceptions
-are commands you run on purpose: `lookback install --write`, which adds the
-plugin to a repository, and `lookback bootstrap`, which writes a new
-repository's scaffolding after asking.
+reading its findings. You are handed the exact text to paste.
+
+Three commands you run on purpose are the exceptions, and this is the whole list:
+
+- `lookback install --write` adds the plugin to a repository's
+  `.claude/settings.json`.
+- `lookback bootstrap` writes a new repository's scaffolding, after asking.
+- `lookback self-update` runs the installer, which configures as well as
+  installs: it sets `autoUpdate` on the marketplace entry in
+  `~/.claude/settings.json` so Claude Code keeps the plugin current, and if
+  `~/.local/bin` is not already on your `PATH` it appends a line to your shell
+  profile (`~/.zshrc`, or `~/.bashrc` under bash). Re-running the installer by
+  hand does exactly the same thing — `self-update` is that one-liner without the
+  URL to remember.
 
 ---
 
@@ -125,7 +138,24 @@ reporting. `lookback review --global` is unaffected either way.
 
 `lookback self-update` does the same thing without you having to remember the URL,
 and `lookback self-update --check` just reports. Lookback never updates itself: it
-mentions a newer release once a day at most, on stderr, and waits to be asked.
+mentions a newer release on stderr and waits to be asked.
+
+**What happens once a day is the GitHub request, not the notice.** The release
+tag is looked up at most once in 24 hours and cached beside the store; for as
+long as that cached answer says a newer release exists, the notice appears after
+every successful command. `LOOKBACK_NO_UPDATE_CHECK=1` turns it off. A lookup
+that *failed* is not cached — otherwise one captive portal would silence the
+notice for the rest of the day — so on a machine that cannot reach GitHub the
+attempt does repeat, bounded by a three-second timeout each time.
+
+`self-update` exits non-zero if it could not establish whether a newer release
+exists, because a command that updates nothing must not report success to a
+script. `--check` exits 0 either way: a question that could not be answered is
+not a failed command.
+
+**On Windows, `--check` reports and the install refuses.** A running
+`lookback.exe` cannot be replaced by the process inside it, so `self-update`
+exits non-zero and prints the PowerShell line below for you to run instead.
 
 Claude Code keeps the plugin current on its own, because the installer sets
 `autoUpdate` on the marketplace entry. OMP has no equivalent, so its plugin moves

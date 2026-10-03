@@ -380,17 +380,135 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 # put. `install --force` rather than `upgrade`, because `omp plugin upgrade`
 # reports everything up to date with an older version installed and the current
 # one in its own freshly-refreshed cache.
+function Omp-Registry {
+    # Where OMP keeps its own marketplace registry. Resolved the way omp 18.3.5
+    # was *observed* to resolve it, by planting a marketplace with the real
+    # binary under a sandboxed home and finding which `marketplaces.json` it
+    # wrote (2026-10-02, re-measured 2026-10-03):
+    #
+    #   neither                           ->  <home>\.omp
+    #   PI_CONFIG_DIR=custom-omp          ->  <home>\custom-omp
+    #   PI_PROFILE=work                   ->  <home>\.omp\profiles\work
+    #   PI_CONFIG_DIR + PI_PROFILE        ->  <home>\custom-omp\profiles\work
+    #   XDG_DATA_HOME with omp\ present   ->  <XDG_DATA_HOME>\omp
+    #   the same, plus PI_CONFIG_DIR      ->  <XDG_DATA_HOME>\omp  (PI_CONFIG_DIR
+    #                                                               is ignored)
+    #   the same, plus PI_PROFILE=work    ->  <home>\.omp\profiles\work  (XDG is
+    #                                                                     ignored)
+    #
+    # Three things that are easy to get wrong, each measured rather than
+    # reasoned about, and kept in step with install.sh's omp_registry:
+    #
+    #  1. The XDG rule is real and is conditional on the directory existing. An
+    #     earlier pass recorded the opposite from an experiment that created
+    #     XDG_DATA_HOME but not XDG_DATA_HOME\omp, so the condition was false
+    #     and the fallback got written down as the rule. `logs\` is the trap: it
+    #     stays in the config directory even when the registry moves to the XDG
+    #     data directory, so watching the logs measures the wrong thing.
+    #  2. The XDG branch applies only when no profile is selected, and when it
+    #     applies it beats PI_CONFIG_DIR.
+    #  3. OMP_PROFILE wins over PI_PROFILE by being *set*, not by being
+    #     non-empty: `OMP_PROFILE=` with `PI_PROFILE=frompi` resolves to the
+    #     base directory. Values are trimmed, and the literal `default` means
+    #     the base directory rather than profiles\default.
+    #
+    # PI_CONFIG_DIR is a directory *name* joined under home, not a path.
+    #
+    # Home is %USERPROFILE%, not $HOME: $HOME is normally unset on Windows, and
+    # PowerShell's $HOME is read-only besides — see Marketplace-Repo above.
+    #
+    # `OMP_CONFIG_DIR`, which this function used to read, is the one name that
+    # really is invented: it occurs nowhere in the omp binary and setting it
+    # changes nothing. No fallback is kept for it, and release.test.sh greps for
+    # exactly that.
+
+    # `Test-Path env:` rather than a truthiness test, because set-and-empty is
+    # a different answer from unset here — point (3).
+    $profileName = if (Test-Path env:OMP_PROFILE) {
+        $env:OMP_PROFILE
+    } elseif (Test-Path env:PI_PROFILE) {
+        $env:PI_PROFILE
+    } else {
+        ''
+    }
+    if ($null -eq $profileName) { $profileName = '' }
+    $profileName = $profileName.Trim()
+    if ($profileName -eq 'default') { $profileName = '' }
+
+    $configDir = if ($env:PI_CONFIG_DIR) { $env:PI_CONFIG_DIR } else { '.omp' }
+    $xdgOmp = if ($env:XDG_DATA_HOME) { Join-Path $env:XDG_DATA_HOME 'omp' } else { $null }
+
+    if (-not $profileName -and $xdgOmp -and (Test-Path -LiteralPath $xdgOmp -PathType Container)) {
+        return Join-Path $xdgOmp 'marketplaces.json'
+    }
+
+    $base = Join-Path $env:USERPROFILE $configDir
+    $dir = if ($profileName) {
+        Join-Path (Join-Path $base 'profiles') $profileName
+    } else {
+        $base
+    }
+    Join-Path $dir 'marketplaces.json'
+}
+
 function Omp-Marketplace-Repo {
-    $ompHome = if ($env:OMP_CONFIG_DIR) { $env:OMP_CONFIG_DIR } else { Join-Path $env:USERPROFILE '.omp' }
-    $file = Join-Path $ompHome 'marketplaces.json'
+    $file = Omp-Registry
     if (-not (Test-Path $file)) { return $null }
     try {
         $document = Get-Content -Raw $file | ConvertFrom-Json
+        # Inside the try, because `Set-StrictMode -Version Latest` makes reading a
+        # property that is not there a *terminating* error, not `$null`. A registry
+        # whose top level has no `marketplaces` — an older schema, a half-written
+        # file — would otherwise kill the installer at the omp step rather than
+        # falling through to "nothing cached". Verified under pwsh 7.6.6:
+        # "The property 'marketplaces' cannot be found on this object."
+        $entry = $document.marketplaces |
+                 Where-Object { $_.name -eq $MarketplaceName } |
+                 Select-Object -First 1
+        # `$entry.sourceUri` is inside the try for the same reason the
+        # `marketplaces` read above is: under `Set-StrictMode -Version Latest`
+        # plus `$ErrorActionPreference = 'Stop'`, reading a property an object
+        # does not have is a *terminating* error. A registry entry that exists
+        # without a `sourceUri` — a partial write, a schema change — would
+        # otherwise kill the installer at the omp step instead of falling
+        # through to "nothing cached".
+        if ($entry) { return $entry.sourceUri }
+        return $null
     } catch {
         return $null
     }
-    $entry = $document.marketplaces | Where-Object { $_.name -eq $MarketplaceName } | Select-Object -First 1
-    if ($entry) { $entry.sourceUri } else { $null }
+}
+
+function Omp-Installed-Version {
+    # The counterpart of install.sh's omp_installed_version, and new on this
+    # side: the PowerShell installer reported nothing at all about the OMP
+    # plugin, while install.sh had a version reader that never worked (SC2259).
+    # Both now answer, so both can report a transition.
+    #
+    # `omp plugin list --json` prints {npm: [...], marketplace: [{id, entries:
+    # [{version}]}]}. `&` hands back one string per line, and Windows
+    # PowerShell 5.1's ConvertFrom-Json wants a single document, so join first.
+    $listing = (& omp plugin list --json 2>$null) -join "`n"
+    if (-not $listing) { return $null }
+    try {
+        $document = $listing | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+    # Wrapped, like Marketplace-Repo's own property read above:
+    # `Set-StrictMode -Version Latest` makes a reference to a property an object
+    # does not have a terminating error, and a listing from a different omp
+    # version is not something to fail an install over. Not knowing the version
+    # is answered as $null, which the caller reports as a warning.
+    try {
+        $plugin = $document.marketplace | Where-Object { $_.id -eq $Plugin } | Select-Object -First 1
+        if (-not $plugin) { return $null }
+        $entry = $plugin.entries | Select-Object -First 1
+        if ($entry) { return $entry.version }
+        return $null
+    } catch {
+        return $null
+    }
 }
 
 if (Get-Command omp -ErrorAction SilentlyContinue) {
@@ -404,11 +522,41 @@ if (Get-Command omp -ErrorAction SilentlyContinue) {
         & omp plugin marketplace remove $MarketplaceName 2>$null
     }
 
+    # Whether the marketplace was actually refreshed, which is what makes a
+    # later "already current" a claim about the published release rather than a
+    # claim about omp's cache. `add` failing is the ordinary path — the name is
+    # already registered — so `update` is the one that has to succeed then.
     & omp plugin marketplace add $Market 2>$null
     if ($LASTEXITCODE -ne 0) { & omp plugin marketplace update $MarketplaceName 2>$null }
+    $ompRefreshed = $LASTEXITCODE -eq 0
+    if (-not $ompRefreshed) {
+        Warn "could not refresh OMP's marketplace; the install below can only use what it has cached"
+    }
 
+    # Always report the outcome, as install.sh now does. Silence was the
+    # symptom: this side printed nothing whatever happened.
+    $ompBefore = Omp-Installed-Version
     & omp plugin install $Plugin --force 2>$null
-    if ($LASTEXITCODE -ne 0) { Warn "run: omp plugin install $Plugin --force" }
+    if ($LASTEXITCODE -ne 0) {
+        Warn "run: omp plugin install $Plugin --force"
+    } else {
+        $ompAfter = Omp-Installed-Version
+        if (-not $ompAfter) {
+            Warn "OMP installed $Plugin but reported no version for it"
+        } elseif ($ompAfter -ne $ompBefore) {
+            $from = if ($ompBefore) { $ompBefore } else { 'none' }
+            Say "OMP plugin $from -> $ompAfter"
+        } elseif ($ompRefreshed) {
+            Say "OMP plugin $ompAfter, already current"
+        } else {
+            # Equality proves *unchanged*, not *current*. With both marketplace
+            # operations failed, a forced install can still succeed from cached
+            # files and leave the version where it was — which is how an install
+            # reported "already current" while sitting releases behind the
+            # marketplace it could not reach.
+            Warn "OMP plugin $ompAfter unchanged, and its marketplace could not be refreshed, so whether that is the current release is unknown"
+        }
+    }
 }
 
 # --- 7. first collection -----------------------------------------------------
