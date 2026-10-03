@@ -359,6 +359,56 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
         }
     }
 
+    # The loop's trigger (design L§10.4). A `SessionEnd` hook, so a change
+    # written when a session ends is picked up by the next one and nothing ever
+    # changes under a running session.
+    #
+    # Merged, never replaced: a user with their own SessionEnd hook keeps it.
+    # PowerShell makes this fiddlier than the shell version, because
+    # ConvertFrom-Json gives PSCustomObjects rather than hashtables and an
+    # absent property read under StrictMode throws rather than returning null —
+    # which is the defect that broke every Windows install two days ago. Every
+    # read here is guarded, and the whole block is in a try.
+    try {
+        $document = if (Test-Path $settingsPath) {
+            Get-Content -Raw $settingsPath | ConvertFrom-Json -AsHashtable
+        } else {
+            @{}
+        }
+        if ($document -isnot [hashtable]) { throw 'not an object' }
+
+        if (-not $document.ContainsKey('hooks') -or $document['hooks'] -isnot [hashtable]) {
+            $document['hooks'] = @{}
+        }
+        $hooks = $document['hooks']
+        if (-not $hooks.ContainsKey('SessionEnd') -or $hooks['SessionEnd'] -isnot [array]) {
+            $hooks['SessionEnd'] = @()
+        }
+
+        $command = "$BinPath session-end --source claude"
+        $already = $false
+        foreach ($group in $hooks['SessionEnd']) {
+            if ($group -isnot [hashtable] -or -not $group.ContainsKey('hooks')) { continue }
+            foreach ($entry in $group['hooks']) {
+                if ($entry -is [hashtable] -and $entry.ContainsKey('command') -and
+                    "$($entry['command'])" -like '*session-end*') {
+                    $already = $true
+                }
+            }
+        }
+
+        if (-not $already) {
+            $hooks['SessionEnd'] += @{
+                hooks = @(@{ type = 'command'; command = $command; timeout = 30 })
+            }
+            $document | ConvertTo-Json -Depth 32 | Set-Content -Path $settingsPath
+            Say 'Lookback will look at each session when it ends'
+        }
+    } catch {
+        # A settings file this cannot parse is not one to rewrite blind, and a
+        # hook that cannot be installed is not a reason to fail the install.
+    }
+
     $listing = & claude plugin list 2>$null
     $present = $listing -and ($listing -match "(^|[^-\w])$([regex]::Escape($Plugin))([^-\w]|$)")
     if ($present) {

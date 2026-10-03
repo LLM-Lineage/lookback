@@ -6,10 +6,14 @@ Every session leaves a transcript, and those transcripts record which skill,
 which subagent and which plugin drove each tool call, what each turn cost, and
 which calls failed. Nobody reads them.
 
-Lookback reads them, compares what you actually do against what you have
-actually configured, and hands you the change to make: the permission rule to
-add, the instruction you have retyped in nine sessions that belongs in
-`CLAUDE.md`, the skill nobody invokes, the devloop a repository never wrote down.
+Lookback reads them and compares what you actually do against what you have
+actually configured. Where the change is a permission rule for a command that
+already ran, it makes it when a session ends and shows you what it did and why.
+Everything else it hands you: the instruction you have retyped in nine sessions
+that belongs in `CLAUDE.md`, the skill nobody invokes, the devloop a repository
+never wrote down.
+
+`/lookback:admin` is where you see all of it, and undo any of it.
 
 **Everything stays on your machine.** Collection and reporting make no network
 call at all — including the plugin suggestions, which match against the catalogue
@@ -26,11 +30,30 @@ it. `LOOKBACK_NO_UPDATE_CHECK=1` turns off that automatic notice — while
 says so when it could not. And `lookback self-update` downloads the installer you
 would otherwise run by hand.
 
-**Lookback proposes; you apply.** Nothing it *reports* edits your
-`settings.json`, `CLAUDE.md` or `AGENTS.md` — not the CLI, and not the agent
-reading its findings. You are handed the exact text to paste.
+## What writes, and what only reports
 
-Three commands you run on purpose are the exceptions, and this is the whole list:
+**Nothing it *reports* edits your files.** Run `report`, `rules`, `review` or
+any skill and you are handed the exact text to paste — not the CLI, and not the
+agent reading its findings.
+
+**The loop is different, and deliberately so.** The installer adds a
+`SessionEnd` hook, and from then on Lookback makes one narrow kind of change by
+itself: a `permissions.allow` rule for a command prefix that has already run.
+Claude Code prompts before running a command, so a prefix at 563 calls is 563
+prompts you answered by hand; the rule removes the keystroke, not the safeguard.
+
+What it will never do on its own, whatever the counts say: write to `CLAUDE.md`
+or `AGENTS.md`, touch `deny` or `ask`, remove a blanket `allow`, grant a shell
+or an interpreter (`bash`, `python3`, `xargs`, `make` — a prefix rule does not
+narrow those at all), allow anything your own rules restrict, or change a value
+you set. Those wait for you in `lookback admin`, with the evidence.
+
+Every change it makes is listed by `lookback admin` with the count behind it,
+and `lookback admin rollback <id>` puts the file back. The record lives in
+`~/.lookback/ledger.sqlite`, is forward-only, and never leaves the machine. To
+turn the whole thing off, delete the hook from `~/.claude/settings.json`.
+
+Three commands you run on purpose also write, and this is the whole list:
 
 - `lookback install --write` adds the plugin to a repository's
   `.claude/settings.json`.
@@ -91,10 +114,14 @@ repository they clone that has step 2 applied simply works.
 2. Puts the binary in `~/.lookback/bin` and links it into `~/.local/bin`,
    adding that to your `PATH` if it is not already there.
 3. Adds `lookback` as a Claude Code marketplace and installs the plugin.
-4. Runs the first collection, so the first question you ask is answered
+4. Adds a `SessionEnd` hook to `~/.claude/settings.json`, which is what lets
+   Lookback work without being asked. If you already have a `SessionEnd` hook it
+   is kept and this is added beside it. Delete the entry to turn the loop off;
+   `--uninstall` removes it for you.
+5. Runs the first collection, so the first question you ask is answered
    immediately rather than after a minute of silence.
 
-**Step 4 is a head start, not part of installing.** It reads files under
+**Step 5 is a head start, not part of installing.** It reads files under
 `~/.claude` and `~/.omp/agent`, writes only to `~/.lookback`, and opens no socket —
 but an agent installing this on your behalf may have its own guard stop it, because
 "reads your transcripts" is the shape of something worth checking. Nothing is
@@ -107,6 +134,11 @@ broken if it is skipped:
 
 So if that step is blocked or skipped, run `lookback collect` once, or simply start
 with `lookback review`.
+
+**Step 4 is the one to know about**, because it is the only part that changes
+what happens later without you asking again. What the loop may then do on its
+own is deliberately narrow, and it is spelled out under
+[What writes, and what only reports](#what-writes-and-what-only-reports).
 
 Platforms: macOS (Apple Silicon and Intel) and Linux (x86-64 and arm64).
 Requires `python3`, `curl`, and `sha256sum` or `shasum`.
@@ -258,8 +290,10 @@ next install with a conflict against itself.
 Restart OMP to load its extension, then enter `/lookback` to review this
 machine's Claude Code and OMP sessions. `/lookback <question>` starts from a
 specific question, and you can keep challenging the evidence in the conversation
-that follows — the counts are there to be disagreed with. As everywhere else, it
-proposes and you apply.
+that follows — the counts are there to be disagreed with. Nothing in the OMP
+extension writes: it reports, and you apply. The one thing that changes files on
+its own is the Claude Code loop, and `/lookback:admin` is where it accounts for
+itself.
 
 OMP clones the marketplace over Git, which needs nothing special now that the
 distribution repository is public.
@@ -418,10 +452,11 @@ Two things to know before you commit it:
   plugin; the plugin's commands run `lookback`, and a settings file cannot carry an
   executable. A teammate who has never run the one-liner gets the commands and a
   `lookback: command not found` from them.
-- **This is the only file Lookback ever writes without being asked twice**, and
-  even here it prints the change and does nothing until `--write`. It is not an
-  exception to "Lookback proposes, you apply" — you asked for one specific change
-  by name.
+- **This file is only ever written when you ask by name**, and even then it
+  prints the change and does nothing until `--write`. The loop never touches a
+  repository's `.claude/settings.json` on its own; the rules it adds go to your
+  own `~/.claude/settings.json`, because a rule derived from your history is
+  yours and not something to commit on a team's behalf.
 
 Review the diff before committing it, the same as any other change to a file your
 team shares.
@@ -447,12 +482,16 @@ Claude Code session hand each to a separate agent and keep its own context empty
 
 ## Inside Claude Code
 
-Nine commands, installed with the plugin. **Restart Claude Code after installing
+Eight commands, installed with the plugin. **Restart Claude Code after installing
 or updating** — it registers a plugin's commands when a session starts.
+
+The first one is the only one you need to remember. The rest are for driving it
+by hand, and they report rather than change anything.
 
 | Command | What it does |
 |---|---|
-| `/lookback:review` | **Start here.** Finds the issues, reports them, proposes the fixes. |
+| `/lookback:admin` | **What Lookback changed for you**, why, and anything waiting on you. Undo any of it. |
+| `/lookback:review` | Finds the issues, reports them, proposes the fixes. |
 | `/lookback:repo` | What this repository should be telling every session. |
 | `/lookback:rules` | Permission rules and `CLAUDE.md` entries worth adding. |
 | `/lookback:report` | The findings alone, without the collect step. |

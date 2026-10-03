@@ -37,13 +37,68 @@ if [ "${1:-}" = "--uninstall" ]; then
     claude plugin uninstall "${PLUGIN}" 2>/dev/null || true
     claude plugin marketplace remove "${MARKETPLACE_NAME}" 2>/dev/null || true
   fi
+  # The hook goes with the binary. Left behind, it would point at a file that is
+  # no longer there, so every session would end by failing to run it.
+  python3 - "${CLAUDE_HOME}/settings.json" <<'UNHOOK'
+import json, pathlib, sys
+
+path = pathlib.Path(sys.argv[1])
+try:
+    document = json.loads(path.read_text()) if path.exists() else {}
+except Exception:
+    sys.exit(0)
+if not isinstance(document, dict):
+    sys.exit(0)
+hooks = document.get("hooks")
+if not isinstance(hooks, dict) or not isinstance(hooks.get("SessionEnd"), list):
+    sys.exit(0)
+
+kept = []
+for group in hooks["SessionEnd"]:
+    entries = group.get("hooks") if isinstance(group, dict) else None
+    if not isinstance(entries, list):
+        kept.append(group)
+        continue
+    # Ours is identified by what it runs. Another tool's SessionEnd hook stays,
+    # and so does a group that still has one left in it.
+    remaining = [
+        entry
+        for entry in entries
+        if not (
+            isinstance(entry, dict)
+            and "session-end" in str(entry.get("command", ""))
+            and "lookback" in str(entry.get("command", ""))
+        )
+    ]
+    if remaining or len(entries) == len(remaining):
+        group["hooks"] = remaining
+        kept.append(group)
+
+if kept:
+    hooks["SessionEnd"] = kept
+else:
+    # An empty event is noise in somebody's settings file and an empty `hooks`
+    # is worse. Both go rather than being left as husks.
+    hooks.pop("SessionEnd", None)
+    if not hooks:
+        document.pop("hooks", None)
+path.write_text(json.dumps(document, indent=2) + "\n")
+print("removed")
+UNHOOK
   if [ "${2:-}" = "--purge" ]; then
-    # The store is derived from ~/.claude and can always be rebuilt, but it is
-    # the user's own history and is not removed without being asked.
-    warn "purging ${STATE} — the collected store"
+    # Two things live here and only one can be rebuilt. The store is derived
+    # from ~/.claude; the ledger is the record of every change Lookback made to
+    # your files and the only way to put one back, and nothing reconstructs it.
+    # Named separately so this is not a surprise.
+    if [ -f "${STATE}/ledger.sqlite" ]; then
+      warn "purging ${STATE}, including the ledger — the only record of what"
+      warn "Lookback changed, which cannot be rebuilt from anything"
+    else
+      warn "purging ${STATE} — the collected store"
+    fi
     rm -r -f "${STATE}"
   else
-    say "the store at ${STATE} is kept; pass --uninstall --purge to remove it too"
+    say "the store and ledger at ${STATE} are kept; --uninstall --purge removes them"
   fi
   say "done"
   exit 0
@@ -410,6 +465,46 @@ AUTOUP
   if [ -n "$(python3 -c "import json,sys;d=json.load(open('${CLAUDE_HOME}/settings.json'));m=d.get('extraKnownMarketplaces',{}).get('${MARKETPLACE_NAME}',{});print('y' if m.get('autoUpdate') else '')" 2>/dev/null)" ]; then
     say "Claude Code will keep the plugin up to date by itself"
   fi
+  # The loop's trigger (design L§10.4). A `SessionEnd` hook, because a change
+  # written when a session ends is picked up by the next one — so nothing ever
+  # changes under a running session.
+  #
+  # Merged, never replaced. A user who has their own `SessionEnd` hook keeps it,
+  # and this adds one entry beside it. The lesson is paid for: `marketplace add`
+  # rewriting an entry and dropping `autoUpdate` is exactly what a careless hook
+  # install repeats.
+  python3 - "${CLAUDE_HOME}/settings.json" "${BIN}" <<'HOOK'
+import json, pathlib, sys
+
+path, binary = pathlib.Path(sys.argv[1]), sys.argv[2]
+command = f"{binary} session-end --source claude"
+
+try:
+    document = json.loads(path.read_text()) if path.exists() else {}
+except Exception:
+    # A settings file this script cannot parse is not one to rewrite blind.
+    sys.exit(0)
+if not isinstance(document, dict):
+    sys.exit(0)
+
+hooks = document.setdefault("hooks", {})
+if not isinstance(hooks, dict):
+    sys.exit(0)
+event = hooks.setdefault("SessionEnd", [])
+if not isinstance(event, list):
+    sys.exit(0)
+
+# Already there, under any matcher: adding a second would run the loop twice.
+for group in event:
+    for entry in (group or {}).get("hooks", []) if isinstance(group, dict) else []:
+        if isinstance(entry, dict) and "session-end" in str(entry.get("command", "")):
+            sys.exit(0)
+
+event.append({"hooks": [{"type": "command", "command": command, "timeout": 30}]})
+path.write_text(json.dumps(document, indent=2) + "\n")
+print("installed")
+HOOK
+
   # Anchored: a substring match also matched `lookback@lineage-llm-src`, the
   # local development install, so this took the update path for a plugin that
   # was not there.
